@@ -26,7 +26,8 @@ export const state = {
   doubleCount: 0,
   pendingAction: null,
   selectedSpace: null,
-  expandedPlayer: null, // player id whose card is expanded in the sidebar
+  expandedPlayer: null,    // player id whose bio card is expanded in the sidebar
+  holdingsExpanded: {},    // playerId -> boolean (true = open); defaults open
   winner: null,
   winReason: '',
 };

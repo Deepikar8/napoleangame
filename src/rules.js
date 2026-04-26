@@ -257,6 +257,7 @@ export function startGame(playerSetups) {
   state.pendingAction = null;
   state.selectedSpace = null;
   state.expandedPlayer = null;
+  state.holdingsExpanded = {};
   state.winner = null;
   state.winReason = '';
   log(`Campaign begins. ${state.players.length} commanders march to glory.`, 'major');

@@ -45,6 +45,7 @@ export function render() {
       </div>
       <div class="sidebar">
         ${renderPlayers()}
+        ${renderHoldings()}
         ${renderActions()}
         ${renderSelectedSpace()}
         ${renderLog()}
@@ -446,6 +447,116 @@ function renderPlayers() {
 }
 
 // ---------------------------------------------------------------------------
+// Holdings panel
+// ---------------------------------------------------------------------------
+
+const GROUP_ORDER  = ['Brown','LightBlue','Pink','Orange','Red','Yellow','Green','Blue'];
+const GROUP_COLOR  = {
+  Brown:     '#6b4423',
+  LightBlue: '#87ceeb',
+  Pink:      '#d47ba0',
+  Orange:    '#d97a2e',
+  Red:       '#8b1d1d',
+  Yellow:    '#d4a93e',
+  Green:     '#2d4a2b',
+  Blue:      '#1e3a5f',
+};
+const GROUP_LABEL  = {
+  Brown:     'Brown',
+  LightBlue: 'Light Blue',
+  Pink:      'Pink',
+  Orange:    'Orange',
+  Red:       'Red',
+  Yellow:    'Yellow',
+  Green:     'Green',
+  Blue:      'Blue',
+};
+
+function renderHoldings() {
+  // Pre-build group maps once
+  const groupSpaces = {};
+  for (const g of GROUP_ORDER) {
+    groupSpaces[g] = BOARD.filter(s => s.type === 'territory' && s.group === g);
+  }
+
+  const cards = state.players.map(p => {
+    // default open unless explicitly set false
+    const open = state.holdingsExpanded[p.id] !== false;
+
+    // Territories grouped
+    const ownedGroups = GROUP_ORDER.map(g => {
+      const spaces  = groupSpaces[g];
+      const mine    = spaces.filter(s => state.ownership[s.i] === p.id);
+      if (mine.length === 0) return null;
+      const full    = mine.length === spaces.length;
+      const dots    = spaces.map(s =>
+        state.ownership[s.i] === p.id
+          ? `<span class="hd-dot owned"></span>`
+          : `<span class="hd-dot empty"></span>`
+      ).join('');
+      const missing = !full && spaces.find(s => state.ownership[s.i] !== p.id);
+      const needsHint = (missing && mine.length === spaces.length - 1)
+        ? `<span class="hd-needs">← ${missing.name}</span>`
+        : '';
+      return { g, full, dots, needsHint };
+    }).filter(Boolean);
+
+    // Utility counts
+    const supplies  = BOARD.filter(s => s.type === 'supply'    && state.ownership[s.i] === p.id).length;
+    const economic  = BOARD.filter(s => s.type === 'economic'  && state.ownership[s.i] === p.id).length;
+    const bldg      = countBuildings(p);
+    const propCount = Object.values(state.ownership).filter(id => id === p.id).length;
+
+    // Summary line shown even when collapsed
+    const summaryParts = [];
+    if (propCount > 0)       summaryParts.push(`${propCount} territories`);
+    if (supplies > 0)        summaryParts.push(`${supplies} supply`);
+    if (economic > 0)        summaryParts.push(`${economic} econ`);
+    if (bldg.regiments > 0 || bldg.armyCorps > 0)
+      summaryParts.push(`${bldg.regiments}R ${bldg.armyCorps}★`);
+    const summary = summaryParts.length ? summaryParts.join(' · ') : 'No holdings yet';
+
+    const detailRows = ownedGroups.map(({ g, full, dots, needsHint }) => `
+      <div class="hd-group-row ${full ? 'full-set' : ''}">
+        <div class="hd-swatch" style="background:${GROUP_COLOR[g]}"></div>
+        <span class="hd-group-name">${GROUP_LABEL[g]}</span>
+        <span class="hd-dots">${dots}</span>
+        ${full    ? '<span class="hd-full-badge">full set!</span>' : ''}
+        ${needsHint}
+      </div>
+    `).join('');
+
+    const miscRow = (supplies > 0 || economic > 0 || bldg.regiments > 0 || bldg.armyCorps > 0) ? `
+      <div class="hd-misc">
+        ${supplies > 0 ? `<span>⛟ ${supplies} Supply Line${supplies > 1 ? 's' : ''}</span>` : ''}
+        ${economic > 0 ? `<span>⚔ ${economic} Economic</span>`  : ''}
+        ${bldg.regiments > 0 ? `<span>🏴 ${bldg.regiments} Regiment${bldg.regiments > 1 ? 's' : ''}</span>` : ''}
+        ${bldg.armyCorps > 0 ? `<span>★ ${bldg.armyCorps} Army Corps</span>` : ''}
+      </div>
+    ` : '';
+
+    return `
+      <div class="hd-player">
+        <div class="hd-player-header" data-hd-player="${p.id}">
+          <div class="player-color" style="background:${p.color}"></div>
+          <span class="hd-player-name">${p.name}</span>
+          <span class="hd-summary">${summary}</span>
+          <span class="hd-toggle">${open ? '▲' : '▼'}</span>
+        </div>
+        ${open ? `<div class="hd-body">${detailRows}${miscRow}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="panel">
+      <div class="panel-title">Holdings</div>
+      ${cards}
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
 // Actions panel
 // ---------------------------------------------------------------------------
 
@@ -667,6 +778,16 @@ function attachGameHandlers() {
     sp.addEventListener('click', () => {
       const idx = +sp.dataset.idx;
       state.selectedSpace = state.selectedSpace === idx ? null : idx;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-hd-player]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = +el.dataset.hdPlayer;
+      // default is open (undefined !== false), so first click collapses
+      const current = state.holdingsExpanded[id] !== false;
+      state.holdingsExpanded[id] = !current;
       render();
     });
   });

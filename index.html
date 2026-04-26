@@ -581,6 +581,130 @@
 
   .group-prop-pill.owned { background: rgba(45, 74, 43, 0.2); }
 
+  /* === HOLDINGS PANEL === */
+  .hd-player {
+    margin-bottom: 8px;
+    border: 1px solid var(--ink-faded);
+  }
+
+  .hd-player:last-child { margin-bottom: 0; }
+
+  .hd-player-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(42, 31, 21, 0.06);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .hd-player-header:hover { background: rgba(42, 31, 21, 0.12); }
+
+  .hd-player-name {
+    font-family: 'IM Fell English SC', serif;
+    font-size: 12px;
+    color: var(--ink);
+    flex: 1;
+  }
+
+  .hd-summary {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--ink-faded);
+    text-align: right;
+    flex: 2;
+  }
+
+  .hd-toggle {
+    font-size: 9px;
+    color: var(--ink-faded);
+    flex-shrink: 0;
+  }
+
+  .hd-body {
+    padding: 6px 8px;
+    background: rgba(255, 248, 220, 0.4);
+  }
+
+  .hd-group-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    border-bottom: 1px dotted rgba(42, 31, 21, 0.1);
+    font-size: 11px;
+  }
+
+  .hd-group-row:last-of-type { border-bottom: none; }
+
+  .hd-group-row.full-set {
+    background: rgba(184, 144, 46, 0.12);
+    margin: 0 -8px;
+    padding: 3px 8px;
+    border-left: 2px solid var(--gold);
+  }
+
+  .hd-swatch {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+    border: 1px solid rgba(42, 31, 21, 0.3);
+  }
+
+  .hd-group-name {
+    font-family: 'IM Fell English SC', serif;
+    color: var(--ink);
+    width: 62px;
+    flex-shrink: 0;
+    font-size: 10px;
+  }
+
+  .hd-dots {
+    display: flex;
+    gap: 3px;
+    flex: 1;
+  }
+
+  .hd-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--ink-faded);
+  }
+
+  .hd-dot.owned { background: var(--ink); border-color: var(--ink); }
+  .hd-dot.empty { background: transparent; }
+
+  .hd-full-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--gold);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .hd-needs {
+    font-size: 9px;
+    color: var(--ink-faded);
+    font-style: italic;
+    white-space: nowrap;
+  }
+
+  .hd-misc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 5px;
+    padding-top: 4px;
+    border-top: 1px dotted rgba(42, 31, 21, 0.2);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--ink-faded);
+  }
+
   /* === COMMANDER CARDS (setup pick step) === */
   .cmd-grid {
     display: grid;
