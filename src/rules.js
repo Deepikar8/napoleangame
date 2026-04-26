@@ -522,16 +522,17 @@ export function handlePropertySpace(sp) {
   setTimeout(() => endTurn(), 800);
 }
 
-export function buyProperty(sp) {
-  const p = currentPlayer();
-  if (p.money < sp.price) {
+export function buyProperty(sp, price = null, buyer = null) {
+  const p = buyer ?? currentPlayer();
+  const actualPrice = price ?? sp.price;
+  if (p.money < actualPrice) {
     log(`${p.name} cannot afford ${sp.name}.`);
     return;
   }
-  payMoney(p, sp.price);
+  payMoney(p, actualPrice);
   state.ownership[sp.i] = p.id;
-  log(`${p.name} acquires ${sp.name} for ${sp.price}₣.`, 'major');
-  emit({ type: 'purchase', spaceIndex: sp.i, spaceName: sp.name, spaceType: sp.type, price: sp.price, ...(sp.group ? { group: sp.group } : {}) });
+  log(`${p.name} acquires ${sp.name} for ${actualPrice}₣.`, 'major');
+  emit({ type: 'purchase', spaceIndex: sp.i, spaceName: sp.name, spaceType: sp.type, price: actualPrice, ...(sp.group ? { group: sp.group } : {}) });
 
   // Napoleon: Eagle of Victory — +50₣ when capturing a Battle Territory
   if (sp.battle && p.commander?.ability === 'eagleOfVictory') {
@@ -549,10 +550,114 @@ export function buyProperty(sp) {
 
 export function declinePurchase() {
   const sp = state.pendingAction?.space;
-  if (sp) emit({ type: 'purchase_declined', spaceIndex: sp.i, spaceName: sp.name, price: sp.price });
+  if (!sp) { state.pendingAction = null; _render(); return; }
+  emit({ type: 'purchase_declined', spaceIndex: sp.i, spaceName: sp.name, price: sp.price });
   state.pendingAction = null;
+
+  // Build the bidder queue: all non-eliminated, non-declining players in turn order
+  // starting from the player after the decliner
+  const decliningId = currentPlayer().id;
+  const nPlayers = state.players.length;
+  const declinerIdx = state.current;
+  const queue = [];
+  for (let offset = 1; offset < nPlayers; offset++) {
+    const candidate = state.players[(declinerIdx + offset) % nPlayers];
+    if (!candidate.eliminated) queue.push(candidate);
+  }
+
+  if (queue.length === 0) {
+    // No other players — property stays unowned
+    _render();
+    setTimeout(() => endTurn(), 400);
+    return;
+  }
+
+  const minBid = Math.floor(sp.price / 2);
+  state.pendingAction = {
+    type: 'auction',
+    title: 'Open Auction',
+    flavor: 'Going once… going twice…',
+    space: sp,
+    decliningPlayerId: decliningId,
+    bids: {},
+    passedPlayers: [],
+    bidderQueue: queue.slice(),   // remaining bidders
+    minBid,
+    currentHighest: 0,
+    highestBidderId: null,
+  };
+  log(`Auction opened for ${sp.name} — minimum bid ₣${minBid}.`);
+  emit({ type: 'auction_started', spaceIndex: sp.i, spaceName: sp.name, minBid });
   _render();
-  setTimeout(() => endTurn(), 400);
+}
+
+// Advance auction to the next bidder; resolve if queue is exhausted.
+function _advanceAuction() {
+  const a = state.pendingAction;
+  if (!a || a.type !== 'auction') return;
+
+  a.bidderQueue.shift(); // remove the player who just acted
+
+  // Skip eliminated players who may have joined the queue while auction was open
+  while (a.bidderQueue.length > 0 && a.bidderQueue[0].eliminated) {
+    a.bidderQueue.shift();
+  }
+
+  if (a.bidderQueue.length === 0) {
+    // Auction over
+    if (a.highestBidderId !== null) {
+      const winner = state.players.find(pl => pl.id === a.highestBidderId);
+      const sp = a.space;
+      const bid = a.bids[a.highestBidderId];
+      emit({ type: 'auction_won', spaceIndex: sp.i, spaceName: sp.name, winnerId: winner.id, winnerName: winner.name, price: bid });
+      log(`${winner.name} wins the auction for ${sp.name} at ₣${bid}!`, 'major');
+      state.pendingAction = null;
+      buyProperty(sp, bid, winner);
+      // buyProperty calls endTurn internally — state.current (the decliner) will advance normally
+    } else {
+      // All passed — property stays unowned
+      emit({ type: 'auction_ended', result: 'no_bids' });
+      log(`No bids — ${a.space.name} remains uncontested.`);
+      state.pendingAction = null;
+      _render();
+      setTimeout(() => endTurn(), 400);
+    }
+    return;
+  }
+
+  _render();
+}
+
+export function placeBid(amount) {
+  const a = state.pendingAction;
+  if (!a || a.type !== 'auction') return;
+  const bidder = a.bidderQueue[0];
+  if (!bidder) return;
+
+  const clampedAmount = Math.max(amount, a.minBid);
+  if (bidder.money < clampedAmount) {
+    log(`${bidder.name} cannot afford to bid ₣${clampedAmount}.`);
+    return;
+  }
+
+  a.bids[bidder.id] = clampedAmount;
+  a.currentHighest = clampedAmount;
+  a.highestBidderId = bidder.id;
+  log(`${bidder.name} bids ₣${clampedAmount} for ${a.space.name}.`);
+  emit({ type: 'auction_bid', spaceIndex: a.space.i, spaceName: a.space.name, bidderId: bidder.id, bidderName: bidder.name, amount: clampedAmount });
+  _advanceAuction();
+}
+
+export function passAuction() {
+  const a = state.pendingAction;
+  if (!a || a.type !== 'auction') return;
+  const bidder = a.bidderQueue[0];
+  if (!bidder) return;
+
+  a.passedPlayers.push(bidder.id);
+  log(`${bidder.name} passes on ${a.space.name}.`);
+  emit({ type: 'auction_pass', spaceIndex: a.space.i, spaceName: a.space.name, bidderId: bidder.id, bidderName: bidder.name });
+  _advanceAuction();
 }
 
 // ---------------------------------------------------------------------------

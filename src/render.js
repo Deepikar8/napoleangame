@@ -22,6 +22,8 @@ import {
   declinePurchase,
   applyCard,
   build,
+  placeBid,
+  passAuction,
 } from './rules.js';
 
 import {
@@ -108,6 +110,16 @@ function speakEvent(e) {
       break;
     case 'turn_skipped':
       speak(`${currentPlayer().name} winters in camp.`);
+      break;
+    case 'auction_started':
+      speak(`Auction! ${e.spaceName}. Opening bid, ${e.minBid} francs.`);
+      break;
+    case 'auction_won':
+      speak(`${e.winnerName} wins ${e.spaceName} at ${e.price} francs!`);
+      playPurchase();
+      break;
+    case 'auction_ended':
+      speak('No bids. The territory remains uncontested.');
       break;
   }
 }
@@ -851,6 +863,36 @@ function renderModal() {
       <button class="btn gold" id="buy-btn">Acquire ₣${sp.price}</button>
       <button class="btn ghost" id="decline-btn">Decline</button>
     `;
+  } else if (a.type === 'auction') {
+    const sp = a.space;
+    const bidder = a.bidderQueue[0];
+    const half     = a.minBid;
+    const quarter3 = Math.floor(sp.price * 0.75);
+    const full     = sp.price;
+    const custom   = a.currentHighest > 0 ? a.currentHighest + 10 : half;
+    body = `
+      <div class="property-detail">
+        <div class="row"><span>Territory</span><span>${sp.name}</span></div>
+        <div class="row"><span>Listed Price</span><span>₣${sp.price}</span></div>
+        <div class="row"><span>Minimum Bid</span><span>₣${half}</span></div>
+        ${a.currentHighest > 0
+          ? `<div class="row"><span>Highest Bid</span><span>₣${a.currentHighest} (${state.players.find(pl => pl.id === a.highestBidderId)?.name ?? ''})</span></div>`
+          : '<div class="row"><span>Highest Bid</span><span>None yet</span></div>'}
+        <div class="row"><span>Bidding Now</span><span style="color:${bidder?.color ?? '#aaa'}">${bidder?.name ?? '—'}</span></div>
+        <div class="row"><span>Treasury</span><span>₣${bidder?.money ?? 0}</span></div>
+      </div>
+    `;
+    const canAffordHalf     = (bidder?.money ?? 0) >= half;
+    const canAffordQuarter3 = (bidder?.money ?? 0) >= quarter3;
+    const canAffordFull     = (bidder?.money ?? 0) >= full;
+    const canAffordCustom   = (bidder?.money ?? 0) >= custom;
+    actions = `
+      <button class="btn gold"  id="bid-half-btn"     ${canAffordHalf     ? '' : 'disabled'}>Bid ₣${half} (½)</button>
+      <button class="btn gold"  id="bid-75-btn"       ${canAffordQuarter3 ? '' : 'disabled'}>Bid ₣${quarter3} (¾)</button>
+      <button class="btn gold"  id="bid-full-btn"     ${canAffordFull     ? '' : 'disabled'}>Bid ₣${full} (full)</button>
+      <button class="btn ghost" id="bid-custom-btn"   ${canAffordCustom   ? '' : 'disabled'}>Bid ₣${custom} (+10)</button>
+      <button class="btn ghost" id="auction-pass-btn">Pass</button>
+    `;
   } else if (a.type === 'card') {
     body = `<p style="font-size:18px;font-style:italic;line-height:1.5">"${a.card.text}"</p>`;
     actions = `<button class="btn gold" id="apply-card-btn">Apply Order</button>`;
@@ -972,6 +1014,18 @@ function attachModalHandlers() {
   if (a.type === 'purchase') {
     document.getElementById('buy-btn')?.addEventListener('click', () => buyProperty(a.space));
     document.getElementById('decline-btn')?.addEventListener('click', declinePurchase);
+  } else if (a.type === 'auction') {
+    const sp = a.space;
+    const half     = a.minBid;
+    const quarter3 = Math.floor(sp.price * 0.75);
+    document.getElementById('bid-half-btn')?.addEventListener('click', () => placeBid(half));
+    document.getElementById('bid-75-btn')?.addEventListener('click', () => placeBid(quarter3));
+    document.getElementById('bid-full-btn')?.addEventListener('click', () => placeBid(sp.price));
+    document.getElementById('bid-custom-btn')?.addEventListener('click', () => {
+      const custom = a.currentHighest > 0 ? a.currentHighest + 10 : half;
+      placeBid(custom);
+    });
+    document.getElementById('auction-pass-btn')?.addEventListener('click', () => passAuction());
   } else if (a.type === 'card') {
     document.getElementById('apply-card-btn')?.addEventListener('click', () => applyCard(a.card));
   } else if (a.type === 'exileChoice') {
