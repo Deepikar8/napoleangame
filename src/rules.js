@@ -2,7 +2,7 @@
 //  RULES — All game logic and turn actions
 // ============================================================
 
-import { state, PLAYER_COLORS, shuffle, log, currentPlayer } from './state.js';
+import { state, PLAYER_COLORS, shuffle, log, currentPlayer, saveGame, clearSave } from './state.js';
 import { BOARD, spaceAt, playerAt } from './board.js';
 import { ORDERS_CARDS, DIPLOMACY_CARDS } from './cards.js';
 import { emit, emitGlobal } from './events.js';
@@ -274,6 +274,7 @@ export function checkVictory() {
  * @param {Array<{name: string, commander: object}>} playerSetups
  */
 export function startGame(playerSetups) {
+  clearSave(); // new campaign always wipes any existing save
   state.players = playerSetups.map(({ name, commander }, i) => ({
     id: i,
     name,
@@ -544,6 +545,7 @@ export function buyProperty(sp, price = null, buyer = null) {
 
   state.pendingAction = null;
   if (checkVictory()) { _render(); return; }
+  saveGame();
   _render();
   setTimeout(() => endTurn(), 800);
 }
@@ -1072,5 +1074,6 @@ export function endTurn() {
     };
   }
 
+  saveGame();
   _render();
 }

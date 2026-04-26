@@ -2,7 +2,7 @@
 //  RENDER — All DOM rendering and event-handler wiring
 // ============================================================
 
-import { state, PLAYER_COLORS, currentPlayer } from './state.js';
+import { state, PLAYER_COLORS, currentPlayer, hasSave, loadGame } from './state.js';
 import { BOARD, spaceAt, playerAt, spaceGridPos } from './board.js';
 import { COMMANDERS } from './commanders.js';
 import {
@@ -265,6 +265,11 @@ function renderCountStep(s) {
       <button class="btn gold" id="choose-commanders-btn" style="margin-top:24px">
         Choose Commanders →
       </button>
+      ${hasSave() ? `
+      <button class="btn ghost" id="resume-btn" style="margin-top:8px">
+        Resume Campaign — Round ${(() => { try { const d = JSON.parse(localStorage.getItem('empire_save')); return d?.round ?? '?'; } catch { return '?'; } })()}, ${(() => { try { const d = JSON.parse(localStorage.getItem('empire_save')); return (d?.players?.filter(p => !p.eliminated).length ?? '?') + ' commanders'; } catch { return '?'; } })()}
+      </button>
+      ` : ''}
     </div>
   `;
 }
@@ -373,6 +378,12 @@ function attachSetupHandlers() {
     s.step = 'pick';
     s.commanders = [];
     render();
+  });
+
+  document.getElementById('resume-btn')?.addEventListener('click', () => {
+    if (loadGame()) {
+      render();
+    }
   });
 
   // ── Pick step ───────────────────────────────────────────
