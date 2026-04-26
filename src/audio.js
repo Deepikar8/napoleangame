@@ -83,10 +83,43 @@ export function playDiceTick() {
   noise(0.04, 0.12, 1800);
 }
 
-/** Sharp click when a die settles on its final value */
-export function playDiceSettle() {
-  tone(800, 'triangle', 0.08, 0.22);
-  noise(0.05, 0.16, 1400);
+/** Sharp click when a die settles on its final value.
+ *  die=0 → left pan, die=1 → right pan (staggered spatial effect).
+ */
+export function playDiceSettle(die = 0) {
+  if (!_audioOn) return;
+  try {
+    const c = ac(), t = c.currentTime;
+    const pan = die === 0 ? -0.5 : 0.5;
+
+    const osc = c.createOscillator();
+    const g   = c.createGain();
+    const panner = c.createStereoPanner();
+    osc.connect(g); g.connect(panner); panner.connect(c.destination);
+    panner.pan.setValueAtTime(pan, t);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(800, t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    osc.start(t); osc.stop(t + 0.10);
+
+    // noise burst, same pan
+    const len = Math.ceil(c.sampleRate * 0.05);
+    const buf = c.createBuffer(1, len, c.sampleRate);
+    const ch  = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource(); src.buffer = buf;
+    const flt = c.createBiquadFilter();
+    flt.type = 'bandpass'; flt.frequency.value = 1400; flt.Q.value = 1.5;
+    const gn  = c.createGain();
+    const pn  = c.createStereoPanner();
+    src.connect(flt); flt.connect(gn); gn.connect(pn); pn.connect(c.destination);
+    pn.pan.setValueAtTime(pan, t);
+    gn.gain.setValueAtTime(0.16, t);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    src.start(t); src.stop(t + 0.07);
+  } catch (_) {}
 }
 
 /** Soft wooden tap — token moving one space */

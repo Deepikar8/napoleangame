@@ -43,7 +43,7 @@ import {
 const HOOKS = {
   onRollStart:    () => { playDiceRoll(); },
   onTick:         () => { playDiceTick(); },
-  onSettle:       () => { playDiceSettle(); },
+  onSettle:       (dieIdx) => { playDiceSettle(dieIdx); },
   onSummaryShown: () => {},
 };
 export function setDiceHooks(h) { Object.assign(HOOKS, h); }
@@ -1479,7 +1479,7 @@ function animateDiceRoll(finalValues, callback) {
           clearInterval(interval);
           dieEl.textContent = finalVal;
           dieEl.classList.add('settled');
-          HOOKS.onSettle();
+          HOOKS.onSettle(i);
           settled++;
           if (settled === total) callback();
         } else {
