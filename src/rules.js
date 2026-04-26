@@ -777,6 +777,7 @@ export function endTurn() {
   state.lastRoll = [0, 0];
   state.doubleCount = 0;
   state.current = (state.current + 1) % state.players.length;
+  state.holdingsExpanded = {}; // reset so new active player auto-expands
 
   if (state.current === 0) {
     state.round++;

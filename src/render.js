@@ -473,65 +473,78 @@ const GROUP_LABEL  = {
 };
 
 function renderHoldings() {
-  // Pre-build group maps once
   const groupSpaces = {};
   for (const g of GROUP_ORDER) {
     groupSpaces[g] = BOARD.filter(s => s.type === 'territory' && s.group === g);
   }
 
   const cards = state.players.map(p => {
-    // default open unless explicitly set false
-    const open = state.holdingsExpanded[p.id] !== false;
+    // Active player defaults open; others default closed.
+    // An explicit true/false in holdingsExpanded overrides the default.
+    const isActive = p.id === state.players[state.current].id;
+    const open = p.id in state.holdingsExpanded ? state.holdingsExpanded[p.id] : isActive;
 
-    // Territories grouped
-    const ownedGroups = GROUP_ORDER.map(g => {
-      const spaces  = groupSpaces[g];
-      const mine    = spaces.filter(s => state.ownership[s.i] === p.id);
+    // Build one row per group this player owns at least one territory in
+    const groupRows = GROUP_ORDER.map(g => {
+      const spaces = groupSpaces[g];
+      const mine   = spaces.filter(s => state.ownership[s.i] === p.id);
       if (mine.length === 0) return null;
+
       const full    = mine.length === spaces.length;
-      const dots    = spaces.map(s =>
+      const missing = full ? null : spaces.find(s => state.ownership[s.i] !== p.id);
+      const oneAway = missing && mine.length === spaces.length - 1;
+
+      // Named territory list: owned = normal, unowned = muted with ⊘
+      const names = spaces.map(s =>
         state.ownership[s.i] === p.id
-          ? `<span class="hd-dot owned"></span>`
-          : `<span class="hd-dot empty"></span>`
-      ).join('');
-      const missing = !full && spaces.find(s => state.ownership[s.i] !== p.id);
-      const needsHint = (missing && mine.length === spaces.length - 1)
-        ? `<span class="hd-needs">← ${missing.name}</span>`
-        : '';
-      return { g, full, dots, needsHint };
-    }).filter(Boolean);
+          ? `<span class="hd-t-owned">${s.name}</span>`
+          : `<span class="hd-t-missing">⊘ ${s.name}</span>`
+      ).join('<span class="hd-t-sep"> · </span>');
+
+      const badge = full
+        ? `<span class="hd-full-badge">✓ Full Set</span>`
+        : oneAway
+          ? `<span class="hd-needs">← need ${missing.name}</span>`
+          : '';
+
+      return `
+        <div class="hd-group-row ${full ? 'full-set' : ''}">
+          <div class="hd-group-header">
+            <div class="hd-swatch" style="background:${GROUP_COLOR[g]}"></div>
+            <span class="hd-group-name">${GROUP_LABEL[g]}</span>
+            ${badge}
+          </div>
+          <div class="hd-territory-list">${names}</div>
+        </div>
+      `;
+    }).filter(Boolean).join('');
 
     // Utility counts
-    const supplies  = BOARD.filter(s => s.type === 'supply'    && state.ownership[s.i] === p.id).length;
-    const economic  = BOARD.filter(s => s.type === 'economic'  && state.ownership[s.i] === p.id).length;
-    const bldg      = countBuildings(p);
+    const supplies = BOARD.filter(s => s.type === 'supply'   && state.ownership[s.i] === p.id).length;
+    const economic = BOARD.filter(s => s.type === 'economic' && state.ownership[s.i] === p.id).length;
+    const bldg     = countBuildings(p);
     const propCount = Object.values(state.ownership).filter(id => id === p.id).length;
+    const totalBuildings = bldg.regiments + bldg.armyCorps;
 
-    // Summary line shown even when collapsed
+    // Collapsed one-liner: "7 territories · 2 supply · 4 buildings"
     const summaryParts = [];
-    if (propCount > 0)       summaryParts.push(`${propCount} territories`);
-    if (supplies > 0)        summaryParts.push(`${supplies} supply`);
-    if (economic > 0)        summaryParts.push(`${economic} econ`);
-    if (bldg.regiments > 0 || bldg.armyCorps > 0)
-      summaryParts.push(`${bldg.regiments}R ${bldg.armyCorps}★`);
+    if (propCount > 0)      summaryParts.push(`${propCount} territor${propCount === 1 ? 'y' : 'ies'}`);
+    if (supplies > 0)       summaryParts.push(`${supplies} supply`);
+    if (economic > 0)       summaryParts.push(`${economic} econ`);
+    if (totalBuildings > 0) summaryParts.push(`${totalBuildings} building${totalBuildings !== 1 ? 's' : ''}`);
     const summary = summaryParts.length ? summaryParts.join(' · ') : 'No holdings yet';
 
-    const detailRows = ownedGroups.map(({ g, full, dots, needsHint }) => `
-      <div class="hd-group-row ${full ? 'full-set' : ''}">
-        <div class="hd-swatch" style="background:${GROUP_COLOR[g]}"></div>
-        <span class="hd-group-name">${GROUP_LABEL[g]}</span>
-        <span class="hd-dots">${dots}</span>
-        ${full    ? '<span class="hd-full-badge">full set!</span>' : ''}
-        ${needsHint}
-      </div>
-    `).join('');
+    // Misc row: "3 Regiments, 1 Army Corps" prose
+    const bldgParts = [
+      bldg.regiments > 0 ? `${bldg.regiments} Regiment${bldg.regiments !== 1 ? 's' : ''}` : '',
+      bldg.armyCorps > 0 ? `${bldg.armyCorps} Army Corps` : '',
+    ].filter(Boolean);
 
-    const miscRow = (supplies > 0 || economic > 0 || bldg.regiments > 0 || bldg.armyCorps > 0) ? `
+    const miscRow = (supplies > 0 || economic > 0 || bldgParts.length > 0) ? `
       <div class="hd-misc">
-        ${supplies > 0 ? `<span>⛟ ${supplies} Supply Line${supplies > 1 ? 's' : ''}</span>` : ''}
-        ${economic > 0 ? `<span>⚔ ${economic} Economic</span>`  : ''}
-        ${bldg.regiments > 0 ? `<span>🏴 ${bldg.regiments} Regiment${bldg.regiments > 1 ? 's' : ''}</span>` : ''}
-        ${bldg.armyCorps > 0 ? `<span>★ ${bldg.armyCorps} Army Corps</span>` : ''}
+        ${supplies > 0  ? `<span>⛟ ${supplies} Supply Line${supplies !== 1 ? 's' : ''}</span>` : ''}
+        ${economic > 0  ? `<span>⚔ ${economic} Economic</span>` : ''}
+        ${bldgParts.length > 0 ? `<span>🏴 ${bldgParts.join(', ')}</span>` : ''}
       </div>
     ` : '';
 
@@ -543,7 +556,7 @@ function renderHoldings() {
           <span class="hd-summary">${summary}</span>
           <span class="hd-toggle">${open ? '▲' : '▼'}</span>
         </div>
-        ${open ? `<div class="hd-body">${detailRows}${miscRow}</div>` : ''}
+        ${open ? `<div class="hd-body">${groupRows}${miscRow}</div>` : ''}
       </div>
     `;
   }).join('');

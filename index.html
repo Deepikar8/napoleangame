@@ -629,9 +629,8 @@
 
   .hd-group-row {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 0;
+    flex-direction: column;
+    padding: 4px 0;
     border-bottom: 1px dotted rgba(42, 31, 21, 0.1);
     font-size: 11px;
   }
@@ -641,7 +640,7 @@
   .hd-group-row.full-set {
     background: rgba(184, 144, 46, 0.12);
     margin: 0 -8px;
-    padding: 3px 8px;
+    padding: 4px 8px;
     border-left: 2px solid var(--gold);
   }
 
@@ -660,22 +659,31 @@
     font-size: 10px;
   }
 
-  .hd-dots {
+  .hd-group-header {
     display: flex;
-    gap: 3px;
-    flex: 1;
+    align-items: center;
+    gap: 6px;
   }
 
-  .hd-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 1px solid var(--ink-faded);
+  .hd-territory-list {
+    padding-left: 16px;
+    margin-top: 2px;
+    font-size: 10px;
+    line-height: 1.5;
+    flex-wrap: wrap;
   }
 
-  .hd-dot.owned { background: var(--ink); border-color: var(--ink); }
-  .hd-dot.empty { background: transparent; }
+  .hd-t-owned {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .hd-t-missing {
+    color: var(--ink-faded);
+    font-style: italic;
+  }
+
+  .hd-t-sep { color: var(--ink-faded); }
 
   .hd-full-badge {
     font-family: 'JetBrains Mono', monospace;
