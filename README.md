@@ -22,12 +22,14 @@ index.html            # Shell + all CSS; loads src/render.js as an ES module
 src/
   state.js            # Game-state object, PLAYER_COLORS, shuffle, log, currentPlayer
   board.js            # BOARD array, BATTLE_TERRITORIES, spaceAt, playerAt, spaceGridPos
-  cards.js            # ORDERS_CARDS and DIPLOMACY_CARDS decks
+  cards.js            # ORDERS_CARDS and DIPLOMACY_CARDS decks (Age of Napoleon flavor)
+  commanders.js       # COMMANDERS array (7 historical figures) + getCommanderById
   rules.js            # All game logic: rent, building, victory, exile, turns
   render.js           # DOM rendering, event handlers, boot entry-point
 tests/
   rules.test.js       # Vitest tests for calculateRent, canBuild,
                       #   checkStrategicVictory, and the exile flow
+  commanders.test.js  # Tests for all 7 commander passive abilities
 .github/
   workflows/
     deploy.yml        # CI: run tests → deploy to GitHub Pages on push to main
@@ -232,6 +234,26 @@ Each exile turn they choose:
 
 ---
 
+### Commanders
+
+Each player selects a unique historical commander during setup.  Commanders have
+**passive abilities** that fire automatically — no player action required.
+
+| Commander | Faction | Ability | Effect |
+|-----------|---------|---------|--------|
+| Napoleon Bonaparte | French | Eagle of Victory | +50₣ whenever you acquire Austerlitz, Jena-Auerstedt, or Wagram |
+| Marshal Davout | French | Iron Discipline | Rivals pay +25% rent on all territories you own |
+| Marshal Murat | French | Cavalry Charge | +75₣ each time you roll doubles (1st and 2nd only — not the exile-triggering 3rd) |
+| Marshal Ney | French | Rearguard Action | When sent to Exile, roll 1d6 first; on 5–6 hold the line and stay |
+| Duke of Wellington | Coalition | Defensive Genius | You pay −25% rent on all territories you do not own |
+| Tsar Alexander I | Coalition | Scorched Earth | When any rival lands on a Green territory you own, collect +100₣ from the bank |
+| Marshal Blücher | Coalition | Vorwärts! | When leaving Exile by any means, immediately roll and move on the same turn |
+
+**Ability stacking** — Davout (+25%) and Wellington (−25%) both apply when
+Wellington lands on a Davout-owned territory: base × 1.25 × 0.75.
+
+---
+
 ### Testing
 
 The Vitest suite covers:
@@ -246,3 +268,12 @@ The Vitest suite covers:
 | `sendToExile` | Flags, position, doubleCount |
 | Collapse helpers | `payMoney`, `updateCollapseStatus`, `checkRecovery` |
 | `netWorth` | Cash only; cash + property; cash + property + buildings |
+| Napoleon ability | +50₣ on Battle Territory purchase; no bonus on ordinary territory |
+| Davout ability | Rent ×1.25 for rivals; applies at building levels; stacks with Wellington |
+| Wellington ability | Rent ×0.75 when paying rivals; no discount when paying own property |
+| Davout + Wellington | Applies ×1.25 then ×0.75; correct stacking order |
+| Murat ability | +75₣ on doubles 1 & 2; no bonus on 3rd (exile) doubles; no bonus on non-doubles |
+| Ney ability | Roll ≥ 5 averts exile; roll ≤ 4 proceeds; doubleCount reset in both outcomes |
+| Alexander ability | Scorched Earth +100₣ is a bank bonus, not included in `calculateRent` |
+| Blücher ability | `rollDice()` called immediately after `exilePay`; works for card escape too |
+| COMMANDERS data | 7 entries, 4 French + 3 Coalition, all required fields, unique ids |
