@@ -456,12 +456,13 @@ export function resolveSpace() {
 // ---------------------------------------------------------------------------
 
 export function getFlavor(sp) {
-  const flavors = {
+  if (sp.flavor) return sp.flavor;
+  const fallbacks = {
     territory: 'A territory worth contesting.',
     supply:    'A vital line of supply.',
     economic:  'An instrument of economic war.',
   };
-  return flavors[sp.type] ?? '';
+  return fallbacks[sp.type] ?? '';
 }
 
 export function handlePropertySpace(sp) {
