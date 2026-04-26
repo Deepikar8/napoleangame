@@ -26,6 +26,7 @@ export const state = {
   doubleCount: 0,
   pendingAction: null,
   selectedSpace: null,
+  expandedPlayer: null, // player id whose card is expanded in the sidebar
   winner: null,
   winReason: '',
 };

@@ -98,8 +98,17 @@ export function checkRecovery(player) {
  * - Economic spaces: dice total × multiplier (1 owned → ×4, 2 → ×10).
  * - Territories: rent table indexed by building level; double base rent
  *   when owner holds the full color group (monopoly bonus).
+ *
+ * Commander modifier stacking order for territory rent:
+ *   1. base rent from table
+ *   2. monopoly bonus (×2 when buildings=0 and full group)
+ *   3. Davout — Iron Discipline: owner applies ×1.25
+ *   4. Wellington — Defensive Genius: payer applies ×0.75
+ *
+ * @param {object} sp      - board space
+ * @param {object|null} payer - the player paying rent (null = skip Wellington check)
  */
-export function calculateRent(sp) {
+export function calculateRent(sp, payer = null) {
   const owner = getOwner(sp.i);
   if (!owner) return 0;
 
@@ -118,6 +127,16 @@ export function calculateRent(sp) {
   const buildings = state.buildings[sp.i] ?? 0;
   let rent = sp.rent[buildings];
   if (buildings === 0 && ownsGroup(owner, sp.group)) rent *= 2;
+
+  // Davout: Iron Discipline — territory rent raised 25% for all rivals
+  if (owner.commander?.ability === 'ironDiscipline') {
+    rent = Math.ceil(rent * 1.25);
+  }
+  // Wellington: Defensive Genius — payer saves 25% on territory rent (applied after Davout)
+  if (payer && payer.id !== owner.id && payer.commander?.ability === 'defensiveGenius') {
+    rent = Math.floor(rent * 0.75);
+  }
+
   return rent;
 }
 
@@ -206,8 +225,11 @@ export function checkVictory() {
 // Setup
 // ---------------------------------------------------------------------------
 
-export function startGame(playerNames) {
-  state.players = playerNames.map((name, i) => ({
+/**
+ * @param {Array<{name: string, commander: object}>} playerSetups
+ */
+export function startGame(playerSetups) {
+  state.players = playerSetups.map(({ name, commander }, i) => ({
     id: i,
     name,
     color: PLAYER_COLORS[i].hex,
@@ -219,6 +241,7 @@ export function startGame(playerNames) {
     skipNext: false,
     collapsed: false,
     outOfExileCard: false,
+    commander,   // full commander object — keeps lookups simple
   }));
   state.ownership = {};
   state.buildings = {};
@@ -233,6 +256,7 @@ export function startGame(playerNames) {
   state.doubleCount = 0;
   state.pendingAction = null;
   state.selectedSpace = null;
+  state.expandedPlayer = null;
   state.winner = null;
   state.winReason = '';
   log(`Campaign begins. ${state.players.length} commanders march to glory.`, 'major');
@@ -376,10 +400,33 @@ export function handlePropertySpace(sp) {
   }
 
   if (owner.id !== p.id) {
-    const rent = calculateRent(sp);
+    // calculateRent handles Davout (+25%) and Wellington (−25%) internally
+    const rent = calculateRent(sp, p);
+
+    // Log commander ability triggers so players can see them firing
+    if (sp.type === 'territory') {
+      if (owner.commander?.ability === 'ironDiscipline') {
+        log(`${owner.name}'s Iron Discipline — rent elevated by 25%.`, 'major');
+      }
+      if (p.commander?.ability === 'defensiveGenius') {
+        log(`${p.name}'s Defensive Genius — rent reduced by 25%.`, 'major');
+      }
+    }
+
     const finalRent = p.collapsed ? Math.floor(rent * 0.5) : rent;
     log(`${p.name} pays ${finalRent}₣ rent to ${owner.name} for ${sp.name}.`, 'loss');
     payRent(p, owner, finalRent);
+
+    // Alexander: Scorched Earth — additional 100₣ from the bank when a rival
+    // lands on any Green (Russian) territory the Tsar owns.
+    // This is a bonus paid by the bank, not an additional charge to the payer.
+    if (sp.type === 'territory' && sp.group === 'Green' &&
+        owner.commander?.ability === 'scorchedEarth') {
+      owner.money += 100;
+      checkRecovery(owner);
+      log(`${owner.name}'s Scorched Earth! Mother Russia claims her toll — +100₣ from the bank.`, 'gain');
+    }
+
     setTimeout(() => endTurn(), 1200);
     return;
   }
@@ -397,6 +444,13 @@ export function buyProperty(sp) {
   payMoney(p, sp.price);
   state.ownership[sp.i] = p.id;
   log(`${p.name} acquires ${sp.name} for ${sp.price}₣.`, 'major');
+
+  // Napoleon: Eagle of Victory — +50₣ when capturing a Battle Territory
+  if (sp.battle && p.commander?.ability === 'eagleOfVictory') {
+    p.money += 50;
+    log(`${p.name}'s Eagle of Victory! The sun of Austerlitz shines — +50₣.`, 'gain');
+  }
+
   state.pendingAction = null;
   if (checkVictory()) { _render(); return; }
   _render();
@@ -540,6 +594,17 @@ export function applyCard(card) {
 // ---------------------------------------------------------------------------
 
 export function sendToExile(p) {
+  // Ney: Rearguard Action — roll 1d6 before exile; on 5 or 6 hold the line
+  if (p.commander?.ability === 'rearguardAction') {
+    const roll = 1 + Math.floor(Math.random() * 6);
+    if (roll >= 5) {
+      log(`${p.name}'s Rearguard Action! Rolls ${roll} — holds the line, exile averted!`, 'major');
+      state.doubleCount = 0; // consume the exile trigger
+      return; // do NOT exile
+    }
+    log(`${p.name}'s Rearguard Action! Rolls ${roll} — the rearguard is overrun.`, 'loss');
+  }
+
   p.inExile = true;
   p.exileTurns = 0;
   p.position = 10;
@@ -568,7 +633,13 @@ export function handleExileTurn() {
             p.outOfExileCard = false;
             log(`${p.name} uses card to escape Exile.`, 'major');
             state.pendingAction = null;
-            rollDice();
+            // Blücher: Vorwärts! — march immediately on escape
+            if (p.commander?.ability === 'vorwarts') {
+              log(`${p.name}'s Vorwärts! — Blücher marches at once!`, 'major');
+              rollDice();
+            } else {
+              endTurn();
+            }
           },
         },
         ...baseOptions,
@@ -628,7 +699,13 @@ export function exilePay() {
   p.exileTurns = 0;
   log(`${p.name} pays 50₣ for release from Exile.`);
   state.pendingAction = null;
-  rollDice();
+  // Blücher: Vorwärts! — march immediately; all others wait for their next turn
+  if (p.commander?.ability === 'vorwarts') {
+    log(`${p.name}'s Vorwärts! — Blücher marches at once!`, 'major');
+    rollDice();
+  } else {
+    endTurn();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -660,12 +737,19 @@ export function rollDice() {
   if (d1 === d2) {
     state.doubleCount++;
     if (state.doubleCount >= 3) {
+      // Third consecutive double → exile. Murat does NOT collect on this roll.
       log(`${p.name} rolled three doubles — straight to Exile!`, 'loss');
       sendToExile(p);
       state.doubleCount = 0;
       _render();
       setTimeout(() => endTurn(), 1500);
       return;
+    }
+    // Murat: Cavalry Charge — +75₣ on doubles 1 and 2
+    if (p.commander?.ability === 'cavalryCharge') {
+      p.money += 75;
+      checkRecovery(p);
+      log(`${p.name}'s Cavalry Charge! Murat leads from the front — +75₣.`, 'gain');
     }
     log(`${p.name} rolls ${d1}+${d2} (doubles!) → moves ${d1 + d2}.`);
   } else {
