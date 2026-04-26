@@ -5,6 +5,7 @@
 import { state, PLAYER_COLORS, shuffle, log, currentPlayer } from './state.js';
 import { BOARD, spaceAt, playerAt } from './board.js';
 import { ORDERS_CARDS, DIPLOMACY_CARDS } from './cards.js';
+import { emit, emitGlobal } from './events.js';
 
 // ---------------------------------------------------------------------------
 // Renderer injection
@@ -77,6 +78,7 @@ export function updateCollapseStatus(player) {
   if (player.money <= 0 && !player.collapsed) {
     player.collapsed = true;
     log(`${player.name} enters Collapse State.`, 'loss');
+    emit({ type: 'collapse_entered', playerId: player.id });
   }
 }
 
@@ -84,6 +86,7 @@ export function checkRecovery(player) {
   if (player.collapsed && player.money > 200) {
     player.collapsed = false;
     log(`${player.name} recovers from Collapse State.`, 'major');
+    emit({ type: 'collapse_recovered', playerId: player.id });
   }
 }
 
@@ -181,8 +184,11 @@ export function build(spaceIndex) {
   payMoney(p, sp.buildCost);
   state.buildings[spaceIndex] = (state.buildings[spaceIndex] ?? 0) + 1;
   const lvl = state.buildings[spaceIndex];
-  const label = lvl === 5 ? 'Army Corps' : `${lvl} Regiment${lvl > 1 ? 's' : ''}`;
+  const levelName = lvl === 5 ? 'Army Corps' : `Regiment ${lvl}`;
+  const label     = lvl === 5 ? 'Army Corps' : `${lvl} Regiment${lvl > 1 ? 's' : ''}`;
   log(`${p.name} builds ${label} in ${sp.name}.`, 'major');
+  emit({ type: 'building_built', spaceIndex, spaceName: sp.name, level: lvl, levelName, cost: sp.buildCost, isArmyCorps: lvl === 5 });
+  emit({ type: 'loss', amount: sp.buildCost, source: 'building' });
   _render();
 }
 
@@ -205,6 +211,7 @@ export function checkStrategicVictory(player) {
 export function checkVictory() {
   for (const p of state.players) {
     if (checkStrategicVictory(p)) {
+      emit({ type: 'game_won', winnerId: p.id, winnerName: p.name, winType: 'strategic', round: state.round, playerId: p.id });
       state.winner = p;
       state.winReason = 'Strategic Victory — Paris and 2+ Battle Territories';
       state.phase = 'gameOver';
@@ -213,7 +220,9 @@ export function checkVictory() {
   }
   if (state.round > state.maxRounds) {
     const sorted = [...state.players].sort((a, b) => netWorth(b) - netWorth(a));
-    state.winner = sorted[0];
+    const winner = sorted[0];
+    emit({ type: 'game_won', winnerId: winner.id, winnerName: winner.name, winType: 'highest_net_worth', round: state.round, playerId: winner.id });
+    state.winner = winner;
     state.winReason = 'Greatest Net Worth at game end';
     state.phase = 'gameOver';
     return true;
@@ -260,7 +269,10 @@ export function startGame(playerSetups) {
   state.holdingsExpanded = {};
   state.winner = null;
   state.winReason = '';
+  state.currentTurnEvents = [];
+  state.gameEvents = [];
   log(`Campaign begins. ${state.players.length} commanders march to glory.`, 'major');
+  emit({ type: 'turn_started', isExileTurn: false });
   _render();
 }
 
@@ -329,9 +341,13 @@ export function movePlayer(p, steps) {
   const oldPos = p.position;
   let newPos = (oldPos + steps) % 40;
   if (newPos < 0) newPos += 40;
+  const dest = spaceAt(newPos);
+  emit({ type: 'move', from: oldPos, to: newPos, spaceName: dest.name, spaceType: dest.type });
   if (steps > 0 && oldPos + steps >= 40) {
     p.money += 200;
     log(`${p.name} passes Mobilization → +200₣.`, 'gain');
+    emit({ type: 'pass_mobilization', amount: 200 });
+    emit({ type: 'gain', amount: 200, source: 'mobilization' });
   }
   p.position = newPos;
   _render();
@@ -356,6 +372,8 @@ export function resolveSpace() {
 
     case 'tax':
       log(`${p.name} pays ${sp.amount}₣ in ${sp.name}.`, 'loss');
+      emit({ type: 'tax_paid', spaceName: sp.name, amount: sp.amount });
+      emit({ type: 'loss', amount: sp.amount, source: 'tax' });
       payMoney(p, sp.amount);
       setTimeout(() => endTurn(), 1000);
       break;
@@ -404,28 +422,36 @@ export function handlePropertySpace(sp) {
     // calculateRent handles Davout (+25%) and Wellington (−25%) internally
     const rent = calculateRent(sp, p);
 
-    // Log commander ability triggers so players can see them firing
+    // Emit commander ability events BEFORE the rent transaction
     if (sp.type === 'territory') {
       if (owner.commander?.ability === 'ironDiscipline') {
         log(`${owner.name}'s Iron Discipline — rent elevated by 25%.`, 'major');
+        emit({ type: 'commander_ability', commanderId: 'davout', abilityName: 'Iron Discipline', amount: null, target: 'rent_increase', context: { spaceName: sp.name, adjustedRent: rent } });
       }
       if (p.commander?.ability === 'defensiveGenius') {
         log(`${p.name}'s Defensive Genius — rent reduced by 25%.`, 'major');
+        emit({ type: 'commander_ability', commanderId: 'wellington', abilityName: 'Defensive Genius', amount: null, target: 'rent_reduction', context: { spaceName: sp.name, adjustedRent: rent } });
       }
     }
 
     const finalRent = p.collapsed ? Math.floor(rent * 0.5) : rent;
     log(`${p.name} pays ${finalRent}₣ rent to ${owner.name} for ${sp.name}.`, 'loss');
+
+    // Emit rent events before money moves
+    emit({ type: 'rent_paid', spaceIndex: sp.i, spaceName: sp.name, amount: finalRent, paidTo: owner.id, paidToName: owner.name });
+    emitGlobal({ type: 'rent_received', spaceIndex: sp.i, spaceName: sp.name, amount: finalRent, paidBy: p.id, paidByName: p.name, playerId: owner.id });
+
     payRent(p, owner, finalRent);
 
     // Alexander: Scorched Earth — additional 100₣ from the bank when a rival
     // lands on any Green (Russian) territory the Tsar owns.
-    // This is a bonus paid by the bank, not an additional charge to the payer.
     if (sp.type === 'territory' && sp.group === 'Green' &&
         owner.commander?.ability === 'scorchedEarth') {
+      emit({ type: 'commander_ability', commanderId: 'alexander', abilityName: 'Scorched Earth', amount: 100, target: 'bank_bonus', context: { spaceName: sp.name }, playerId: owner.id });
       owner.money += 100;
       checkRecovery(owner);
       log(`${owner.name}'s Scorched Earth! Mother Russia claims her toll — +100₣ from the bank.`, 'gain');
+      emitGlobal({ type: 'gain', amount: 100, source: 'commander_ability', playerId: owner.id });
     }
 
     setTimeout(() => endTurn(), 1200);
@@ -445,11 +471,14 @@ export function buyProperty(sp) {
   payMoney(p, sp.price);
   state.ownership[sp.i] = p.id;
   log(`${p.name} acquires ${sp.name} for ${sp.price}₣.`, 'major');
+  emit({ type: 'purchase', spaceIndex: sp.i, spaceName: sp.name, spaceType: sp.type, price: sp.price, ...(sp.group ? { group: sp.group } : {}) });
 
   // Napoleon: Eagle of Victory — +50₣ when capturing a Battle Territory
   if (sp.battle && p.commander?.ability === 'eagleOfVictory') {
+    emit({ type: 'commander_ability', commanderId: 'napoleon', abilityName: 'Eagle of Victory', amount: 50, target: 'battle_bonus', context: { spaceName: sp.name } });
     p.money += 50;
     log(`${p.name}'s Eagle of Victory! The sun of Austerlitz shines — +50₣.`, 'gain');
+    emit({ type: 'gain', amount: 50, source: 'commander_ability' });
   }
 
   state.pendingAction = null;
@@ -459,6 +488,8 @@ export function buyProperty(sp) {
 }
 
 export function declinePurchase() {
+  const sp = state.pendingAction?.space;
+  if (sp) emit({ type: 'purchase_declined', spaceIndex: sp.i, spaceName: sp.name, price: sp.price });
   state.pendingAction = null;
   _render();
   setTimeout(() => endTurn(), 400);
@@ -478,6 +509,8 @@ export function drawCard(subtype) {
   const card = deck.shift();
   if (card.action !== 'outOfExile') deck.push(card);
 
+  emit({ type: 'card_drawn', subtype, cardText: card.text, cardAction: card.action });
+
   state.pendingAction = {
     type: 'card',
     subtype,
@@ -492,18 +525,21 @@ export function applyCard(card) {
   const p = currentPlayer();
   state.pendingAction = null;
   log(`${p.name}: ${card.text}`);
+  emit({ type: 'card_effect', description: card.text, amount: card.amount ?? null, action: card.action });
 
   switch (card.action) {
     case 'gain':
       p.money += card.amount;
       checkRecovery(p);
       log(`${p.name} gains ${card.amount}₣.`, 'gain');
+      emit({ type: 'gain', amount: card.amount, source: 'card' });
       setTimeout(() => endTurn(), 800);
       break;
 
     case 'pay':
       payMoney(p, card.amount);
       log(`${p.name} pays ${card.amount}₣.`, 'loss');
+      emit({ type: 'loss', amount: card.amount, source: 'card' });
       setTimeout(() => endTurn(), 800);
       break;
 
@@ -512,6 +548,8 @@ export function applyCard(card) {
       if (card.collect && target < p.position) {
         p.money += 200;
         log(`${p.name} passes Mobilization → +200₣.`, 'gain');
+        emit({ type: 'pass_mobilization', amount: 200 });
+        emit({ type: 'gain', amount: 200, source: 'mobilization' });
       }
       p.position = target;
       _render();
@@ -520,12 +558,14 @@ export function applyCard(card) {
     }
 
     case 'moveBy':
+      // movePlayer emits 'move' (and possibly 'pass_mobilization') internally
       movePlayer(p, card.amount);
       break;
 
     case 'skip':
       p.skipNext = true;
       log(`${p.name} will skip next turn.`);
+      emit({ type: 'turn_skipped', reason: 'card' });
       setTimeout(() => endTurn(), 800);
       break;
 
@@ -534,6 +574,7 @@ export function applyCard(card) {
       const total = (regiments + armyCorps) * card.amount;
       payMoney(p, total);
       log(`${p.name} pays ${total}₣ for ${regiments + armyCorps} units.`, 'loss');
+      emit({ type: 'loss', amount: total, source: 'card' });
       setTimeout(() => endTurn(), 800);
       break;
     }
@@ -549,6 +590,7 @@ export function applyCard(card) {
       p.money += total;
       checkRecovery(p);
       log(`${p.name} collects ${total}₣ in tribute.`, 'gain');
+      emit({ type: 'gain', amount: total, source: 'card_collect_all' });
       setTimeout(() => endTurn(), 800);
       break;
     }
@@ -563,6 +605,7 @@ export function applyCard(card) {
       }
       payMoney(p, total);
       log(`${p.name} pays ${total}₣ to rivals.`, 'loss');
+      emit({ type: 'loss', amount: total, source: 'card_pay_all' });
       setTimeout(() => endTurn(), 800);
       break;
     }
@@ -573,6 +616,7 @@ export function applyCard(card) {
       p.money += total;
       checkRecovery(p);
       log(`${p.name} gains ${total}₣ from ${supplies} supply lines.`, 'gain');
+      emit({ type: 'gain', amount: total, source: 'card' });
       setTimeout(() => endTurn(), 800);
       break;
     }
@@ -584,7 +628,7 @@ export function applyCard(card) {
       break;
 
     case 'goToExile':
-      sendToExile(p);
+      sendToExile(p, 'card', card.text);
       setTimeout(() => endTurn(), 1000);
       break;
   }
@@ -594,10 +638,11 @@ export function applyCard(card) {
 // Exile
 // ---------------------------------------------------------------------------
 
-export function sendToExile(p) {
+export function sendToExile(p, reason = 'corner_landing', cardText = null) {
   // Ney: Rearguard Action — roll 1d6 before exile; on 5 or 6 hold the line
   if (p.commander?.ability === 'rearguardAction') {
     const roll = 1 + Math.floor(Math.random() * 6);
+    emit({ type: 'commander_ability', commanderId: 'ney', abilityName: 'Rearguard Action', amount: null, target: 'exile_prevention', context: { roll, success: roll >= 5 } });
     if (roll >= 5) {
       log(`${p.name}'s Rearguard Action! Rolls ${roll} — holds the line, exile averted!`, 'major');
       state.doubleCount = 0; // consume the exile trigger
@@ -606,6 +651,7 @@ export function sendToExile(p) {
     log(`${p.name}'s Rearguard Action! Rolls ${roll} — the rearguard is overrun.`, 'loss');
   }
 
+  emit({ type: 'sent_to_exile', reason, cardText });
   p.inExile = true;
   p.exileTurns = 0;
   p.position = 10;
@@ -633,9 +679,12 @@ export function handleExileTurn() {
             p.exileTurns = 0;
             p.outOfExileCard = false;
             log(`${p.name} uses card to escape Exile.`, 'major');
+            emit({ type: 'exile_attempt', method: 'card', success: true, dice: null });
+            emit({ type: 'escaped_exile', method: 'card' });
             state.pendingAction = null;
             // Blücher: Vorwärts! — march immediately on escape
             if (p.commander?.ability === 'vorwarts') {
+              emit({ type: 'commander_ability', commanderId: 'blucher', abilityName: 'Vorwärts!', amount: null, target: 'immediate_move', context: { method: 'card' } });
               log(`${p.name}'s Vorwärts! — Blücher marches at once!`, 'major');
               rollDice();
             } else {
@@ -669,15 +718,19 @@ export function exileDiceRoll() {
     p.inExile = false;
     p.exileTurns = 0;
     log(`${p.name} rolls doubles (${d1}+${d2}) and escapes Exile!`, 'major');
+    emit({ type: 'exile_attempt', method: 'doubles', success: true, dice: [d1, d2] });
+    emit({ type: 'escaped_exile', method: 'doubles' });
     movePlayer(p, d1 + d2);
   } else {
     p.exileTurns++;
     log(`${p.name} rolls ${d1}+${d2}, no escape.`);
+    emit({ type: 'exile_attempt', method: 'doubles', success: false, dice: [d1, d2] });
     if (p.exileTurns >= 3) {
       log(`${p.name} must pay 50₣ after 3 failed attempts.`, 'loss');
       payMoney(p, 50);
       p.inExile = false;
       p.exileTurns = 0;
+      emit({ type: 'escaped_exile', method: 'pay' });
       movePlayer(p, d1 + d2);
     } else {
       _render();
@@ -699,9 +752,12 @@ export function exilePay() {
   p.inExile = false;
   p.exileTurns = 0;
   log(`${p.name} pays 50₣ for release from Exile.`);
+  emit({ type: 'exile_attempt', method: 'pay', success: true, dice: null });
+  emit({ type: 'escaped_exile', method: 'pay' });
   state.pendingAction = null;
   // Blücher: Vorwärts! — march immediately; all others wait for their next turn
   if (p.commander?.ability === 'vorwarts') {
+    emit({ type: 'commander_ability', commanderId: 'blucher', abilityName: 'Vorwärts!', amount: null, target: 'immediate_move', context: { method: 'pay' } });
     log(`${p.name}'s Vorwärts! — Blücher marches at once!`, 'major');
     rollDice();
   } else {
@@ -735,12 +791,14 @@ export function rollDice() {
   state.lastRoll = [d1, d2];
   state.rolledThisTurn = true;
 
+  emit({ type: 'roll', dice: [d1, d2], total: d1 + d2, isDoubles: d1 === d2 });
+
   if (d1 === d2) {
     state.doubleCount++;
     if (state.doubleCount >= 3) {
       // Third consecutive double → exile. Murat does NOT collect on this roll.
       log(`${p.name} rolled three doubles — straight to Exile!`, 'loss');
-      sendToExile(p);
+      sendToExile(p, 'three_doubles');
       state.doubleCount = 0;
       _render();
       setTimeout(() => endTurn(), 1500);
@@ -748,9 +806,11 @@ export function rollDice() {
     }
     // Murat: Cavalry Charge — +75₣ on doubles 1 and 2
     if (p.commander?.ability === 'cavalryCharge') {
+      emit({ type: 'commander_ability', commanderId: 'murat', abilityName: 'Cavalry Charge', amount: 75, target: 'doubles_bonus', context: { doubleCount: state.doubleCount, dice: [d1, d2] } });
       p.money += 75;
       checkRecovery(p);
       log(`${p.name}'s Cavalry Charge! Murat leads from the front — +75₣.`, 'gain');
+      emit({ type: 'gain', amount: 75, source: 'commander_ability' });
     }
     log(`${p.name} rolls ${d1}+${d2} (doubles!) → moves ${d1 + d2}.`);
   } else {
@@ -773,16 +833,22 @@ export function endTurn() {
     return;
   }
 
+  emit({ type: 'turn_ended' });
+
   state.rolledThisTurn = false;
   state.lastRoll = [0, 0];
   state.doubleCount = 0;
+  state.currentTurnEvents = [];            // clear AFTER turn_ended, BEFORE advancing
   state.current = (state.current + 1) % state.players.length;
-  state.holdingsExpanded = {}; // reset so new active player auto-expands
+  state.holdingsExpanded = {};
 
   if (state.current === 0) {
     state.round++;
     log(`──── Round ${state.round} ────`, 'major');
+    emit({ type: 'round_started', round: state.round });
   }
+
+  emit({ type: 'turn_started', isExileTurn: state.players[state.current]?.inExile ?? false });
 
   if (checkVictory()) { _render(); return; }
   _render();

@@ -65,6 +65,8 @@ function resetState(players) {
   state.selectedSpace = null;
   state.winner = null;
   state.winReason = '';
+  state.currentTurnEvents = [];
+  state.gameEvents = [];
 }
 
 // Board spaces used across tests

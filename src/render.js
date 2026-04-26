@@ -39,6 +39,7 @@ export function render() {
       <div class="title">Empire &amp; Coalition</div>
       <div class="subtitle">— A Campaign of Crowns and Coin —</div>
     </div>
+    ${renderDebugPanel()}
     <div class="game-area">
       <div class="board-container">
         ${renderBoard()}
@@ -812,6 +813,8 @@ function attachGameHandlers() {
       render();
     });
   });
+
+  attachDebugHandlers();
 }
 
 function attachModalHandlers() {
@@ -832,6 +835,50 @@ function attachModalHandlers() {
 
 function attachVictoryHandlers() {
   document.getElementById('restart-victory-btn')?.addEventListener('click', () => location.reload());
+  attachDebugHandlers();
+}
+
+// ---------------------------------------------------------------------------
+// Dev debug panel — only visible when URL contains ?debug=true
+// ---------------------------------------------------------------------------
+
+const DEV_MODE = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+
+function renderDebugPanel() {
+  if (!DEV_MODE) return '';
+  return `
+    <div id="debug-btn-wrap" style="position:fixed;bottom:12px;right:12px;z-index:200;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <button id="debug-toggle-btn" style="
+        background:#1e3a5f;color:#e8dcc0;border:1px solid #b8902e;
+        padding:6px 12px;font-family:JetBrains Mono,monospace;font-size:11px;
+        cursor:pointer;letter-spacing:0.05em
+      ">⚙ Events</button>
+      <div id="debug-panel" style="display:none;background:#0d0a07;color:#e8dcc0;
+        border:1px solid #b8902e;padding:12px;max-width:460px;max-height:400px;
+        overflow:auto;font-family:JetBrains Mono,monospace;font-size:10px;
+        white-space:pre;line-height:1.5">
+      </div>
+    </div>
+  `;
+}
+
+function attachDebugHandlers() {
+  if (!DEV_MODE) return;
+  const btn   = document.getElementById('debug-toggle-btn');
+  const panel = document.getElementById('debug-panel');
+  if (!btn || !panel) return;
+  btn.addEventListener('click', () => {
+    if (panel.style.display === 'none') {
+      const turnJSON = JSON.stringify(state.currentTurnEvents, null, 2);
+      const gameJSON = JSON.stringify(state.gameEvents, null, 2);
+      panel.textContent =
+        `── currentTurnEvents (${state.currentTurnEvents.length}) ──\n${turnJSON}\n\n` +
+        `── gameEvents (${state.gameEvents.length}) ──\n${gameJSON}`;
+      panel.style.display = 'block';
+    } else {
+      panel.style.display = 'none';
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

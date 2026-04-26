@@ -61,6 +61,8 @@ function resetState(players = [makePlayer()]) {
   state.selectedSpace = null;
   state.winner = null;
   state.winReason = '';
+  state.currentTurnEvents = [];
+  state.gameEvents = [];
 }
 
 // Boards spaces useful across tests

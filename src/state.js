@@ -30,6 +30,8 @@ export const state = {
   holdingsExpanded: {},    // playerId -> boolean (true = open); defaults open
   winner: null,
   winReason: '',
+  currentTurnEvents: [], // cleared at the start of each new turn
+  gameEvents: [],        // accumulates for entire game, never cleared
 };
 
 export function shuffle(arr) {
