@@ -209,9 +209,15 @@
   }
 
   @media (max-width: 600px) {
-    .page { padding: 32px 24px; }
+    body { padding: 12px 8px 40px; }
+    .page { padding: 28px 18px; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 17px; }
+    p, li { font-size: 14px; }
     table { font-size: 12px; }
     td, th { padding: 6px 8px; }
+    /* Tables scroll horizontally if too wide */
+    .section { overflow-x: auto; }
   }
 </style>
 </head>

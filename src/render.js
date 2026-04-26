@@ -828,7 +828,7 @@ function renderActions() {
   const canRoll = !state.rolledThisTurn || state.lastRoll[0] === state.lastRoll[1];
 
   return `
-    <div class="panel">
+    <div class="panel action-panel">
       <div class="panel-title">Imperial Council</div>
       <button class="btn crimson" id="roll-btn" ${(!canRoll || state.pendingAction || state.diceRolling) ? 'disabled' : ''}>
         ${p.inExile ? 'Attempt Escape' : 'Roll the Dice'}

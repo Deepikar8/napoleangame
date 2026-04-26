@@ -105,6 +105,80 @@
     .game-area { grid-template-columns: 1fr; }
   }
 
+  /* ── Mobile ─────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    body { padding: 8px; }
+
+    .header { margin-bottom: 10px; }
+
+    /* Board container: tighter padding so board fills the screen */
+    .board-container { padding: 8px; }
+
+    /* Tile internals scale with viewport width.
+       On a 375px phone: 2.1vw ≈ 7.9px — readable at this scale. */
+    .space {
+      padding: 2px;
+      font-size: clamp(6px, 2.1vw, 9px);
+    }
+
+    .space-name {
+      font-size: clamp(5.5px, 2vw, 9px);
+      margin-top: 1px;
+    }
+
+    /* Hide price on tiles — visible in the sidebar when tapped */
+    .space-price { display: none; }
+
+    /* Color bar shrinks proportionally */
+    .color-bar {
+      height: clamp(6px, 2.5vw, 14px);
+      margin: -2px -2px 2px -2px;
+    }
+
+    /* Corner icons */
+    .corner-icon { font-size: clamp(14px, 4vw, 22px); }
+
+    /* Board center eagle area */
+    .board-center { padding: 4px; }
+    .center-eagle { font-size: clamp(20px, 5vw, 36px); }
+    .center-title,
+    .center-message,
+    .turn-indicator { font-size: clamp(7px, 2vw, 11px); }
+    .dice-display { gap: 4px; margin: 4px 0; }
+    .die { width: 22px; height: 22px; font-size: 13px; }
+
+    /* Sidebar: full width, comfortable reading */
+    .sidebar { gap: 10px; }
+    .panel { padding: 12px; }
+    .panel-title { font-size: 13px; }
+
+    /* Bigger touch targets for action buttons */
+    .btn { padding: 12px 16px; font-size: 14px; min-height: 44px; }
+
+    /* Sticky action bar: Roll + End Turn always visible at bottom */
+    .panel.action-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      border-radius: 0;
+      border-top: 2px solid var(--gold);
+      padding: 10px 16px;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+    }
+
+    /* Push content above the sticky bar */
+    .game-area { padding-bottom: 100px; }
+  }
+
+  @media (max-width: 380px) {
+    /* Very small phones (SE, Galaxy A series) — squeeze a bit more */
+    .space { padding: 1px; font-size: 1.9vw; }
+    .space-name { font-size: 1.8vw; }
+    .color-bar { height: 5px; }
+  }
+
   /* === BOARD === */
   .board-container {
     background:
