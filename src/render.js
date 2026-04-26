@@ -180,6 +180,7 @@ export function render() {
     </div>
   `;
   attachGameHandlers();
+  renderTokenLayer(); // place token overlay after board is in DOM
 
   document.querySelectorAll('.modal-overlay').forEach(el => el.remove());
 
@@ -416,26 +417,96 @@ function attachSetupHandlers() {
 // Board helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Render player tokens on a space.
- * ≤ 2 players → individual colored dots.
- * 3+ players  → first 2 dots + a "+N" overflow badge so nothing spills out.
- */
-function renderTokens(players) {
-  if (players.length === 0) return '';
-  const visible = players.slice(0, 2);
-  const overflow = players.length - visible.length;
-  const dots = visible.map(p => {
-    const monogram = p.commander?.monogram ?? '';
+// ---------------------------------------------------------------------------
+// Token overlay layer — tokens live in a single absolutely-positioned layer
+// over the board grid so movement only touches style properties, not the DOM.
+// ---------------------------------------------------------------------------
+
+function getSpaceCenter(spaceIdx) {
+  const board = document.querySelector('.board');
+  const space = document.querySelector(`.space[data-idx="${spaceIdx}"]`);
+  if (!board || !space) return null;
+  const br = board.getBoundingClientRect();
+  const sr = space.getBoundingClientRect();
+  return {
+    x: sr.left - br.left + sr.width  / 2,
+    y: sr.top  - br.top  + sr.height / 2,
+  };
+}
+
+function renderTokenLayer() {
+  const board = document.querySelector('.board');
+  if (!board) return;
+
+  // Remove stale layer (fresh render)
+  board.querySelector('.token-layer')?.remove();
+
+  const layer = document.createElement('div');
+  layer.className = 'token-layer';
+
+  const TOKEN_HALF = 7; // half of 14px token size
+
+  // Group non-eliminated players by position for stacking offsets
+  const byPos = {};
+  state.players.forEach(p => {
+    if (p.eliminated) return;
+    (byPos[p.position] ??= []).push(p.id);
+  });
+
+  state.players.forEach(p => {
+    if (p.eliminated) return;
     const isActive = p.id === state.players[state.current]?.id;
-    return `<div class="player-token${isActive ? ' active-player' : ''}" style="background:${p.color}" title="${p.name}${monogram ? ' · ' + p.commander.name : ''}">
-      ${monogram ? `<span class="token-monogram">${monogram}</span>` : ''}
-    </div>`;
-  }).join('');
-  const badge = overflow > 0
-    ? `<div class="token-overflow">+${overflow}</div>`
-    : '';
-  return `<div class="space-tokens">${dots}${badge}</div>`;
+    const token = document.createElement('div');
+    token.className = `player-token${isActive ? ' active-player' : ''}`;
+    token.style.background = p.color;
+    token.dataset.playerId = p.id;
+    token.title = p.name + (p.commander ? ' · ' + p.commander.name : '');
+    if (p.commander?.monogram) {
+      const mono = document.createElement('span');
+      mono.className = 'token-monogram';
+      mono.textContent = p.commander.monogram;
+      token.appendChild(mono);
+    }
+
+    // Position using getBoundingClientRect — only works after board is in DOM
+    // We defer to positionTokensOnLayer() called right after this returns.
+    const center = getSpaceCenter(p.position);
+    if (center) {
+      const group = byPos[p.position] ?? [];
+      const idx = group.indexOf(p.id);
+      const total = group.length;
+      const xOff = total > 1 ? (idx - (total - 1) / 2) * 7 : 0;
+      token.style.left = (center.x + xOff - TOKEN_HALF) + 'px';
+      token.style.top  = (center.y         - TOKEN_HALF) + 'px';
+    }
+
+    layer.appendChild(token);
+  });
+
+  board.appendChild(layer);
+}
+
+function positionTokensOnLayer() {
+  const TOKEN_HALF = 7;
+  const byPos = {};
+  state.players.forEach(p => {
+    if (p.eliminated) return;
+    (byPos[p.position] ??= []).push(p.id);
+  });
+
+  state.players.forEach(p => {
+    if (p.eliminated) return;
+    const el = document.querySelector(`.token-layer .player-token[data-player-id="${p.id}"]`);
+    if (!el) return;
+    const center = getSpaceCenter(p.position);
+    if (!center) return;
+    const group = byPos[p.position] ?? [];
+    const idx = group.indexOf(p.id);
+    const total = group.length;
+    const xOff = total > 1 ? (idx - (total - 1) / 2) * 7 : 0;
+    el.style.left = (center.x + xOff - TOKEN_HALF) + 'px';
+    el.style.top  = (center.y         - TOKEN_HALF) + 'px';
+  });
 }
 
 /**
@@ -456,7 +527,6 @@ function renderBuildingMarker(level) {
 function renderBoard() {
   const cells = BOARD.map(sp => {
     const pos = spaceGridPos(sp.i);
-    const players = playerAt(sp.i);
     const owner = getOwner(sp.i);
     const buildings = state.buildings[sp.i] || 0;
     const isSelected = state.selectedSpace === sp.i;
@@ -499,8 +569,6 @@ function renderBoard() {
       `;
     }
 
-    const tokens = renderTokens(players);
-
     const ownershipFlag = owner
       ? `<div class="ownership-flag" style="background:${owner.color}"></div>`
       : '';
@@ -524,7 +592,6 @@ function renderBoard() {
         ${inner}
         ${ownershipFlag}
         ${buildingMarker}
-        <div class="space-tokens">${tokens}</div>
       </div>
     `;
   }).join('');
@@ -1346,8 +1413,9 @@ function renderSettings() {
 // ---------------------------------------------------------------------------
 // Step-by-step token movement animation
 // Moves the token one space at a time at STEP_MS intervals.
-// Only re-renders the board container on each step (not the full sidebar)
-// to keep the animation smooth without thrashing the entire DOM.
+// Token movement via CSS transitions on the overlay layer.
+// Only token positions are updated on each step — no board DOM rebuild.
+// The CSS transition (140ms ease-out) provides smooth gliding between spaces.
 // ---------------------------------------------------------------------------
 function animateMove(p, fromPos, steps, onSettled) {
   const STEP_MS = 160;
@@ -1355,18 +1423,16 @@ function animateMove(p, fromPos, steps, onSettled) {
   const total   = Math.abs(steps);
   let   step    = 0;
 
-  function boardContainer() {
-    return document.querySelector('.board-container');
-  }
+  // Ensure token layer exists (render() may not have run yet if called directly)
+  if (!document.querySelector('.token-layer')) renderTokenLayer();
 
   function doStep() {
     step++;
     const pos = ((fromPos + step * dir) % 40 + 40) % 40;
     p.position = pos;
 
-    // Partial re-render: only the board, not the whole page
-    const bc = boardContainer();
-    if (bc) bc.innerHTML = renderBoard();
+    // Just reposition tokens on the overlay — no board DOM rebuild
+    positionTokensOnLayer();
 
     if (step < total) {
       playTokenStep();
@@ -1431,3 +1497,8 @@ registerRenderer(render);
 registerDiceAnimator(animateDiceRoll);
 registerMoveAnimator(animateMove);
 render();
+
+// Reposition token overlay when window resizes (board changes size)
+window.addEventListener('resize', () => {
+  if (state.phase === 'playing') positionTokensOnLayer();
+});
