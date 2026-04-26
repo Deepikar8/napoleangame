@@ -135,6 +135,8 @@ function speakEvent(e) {
 function speakNewEvents() {
   for (const e of state.currentTurnEvents) {
     if (_spokenEvents.has(e)) continue;
+    // Hold the turn announcement until the summary modal is dismissed
+    if (e.type === 'turn_started' && state.pendingTurnSummary) continue;
     _spokenEvents.add(e);
     speakEvent(e);
   }
