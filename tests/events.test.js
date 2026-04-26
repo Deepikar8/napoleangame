@@ -66,6 +66,9 @@ function resetState(players = [makePlayer(0), makePlayer(1)]) {
   state.winReason = '';
   state.currentTurnEvents = [];
   state.gameEvents = [];
+  state.diceRolling = false;
+  state.lastDiceRolled = [0, 0];
+  state.pendingTurnSummary = null;
 }
 
 // Board fixtures

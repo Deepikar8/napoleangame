@@ -7,6 +7,8 @@ import { BOARD, spaceAt, playerAt, spaceGridPos } from './board.js';
 import { COMMANDERS } from './commanders.js';
 import {
   registerRenderer,
+  registerDiceAnimator,
+  registerMoveAnimator,
   getOwner,
   ownsGroup,
   netWorth,
@@ -21,6 +23,114 @@ import {
   applyCard,
   build,
 } from './rules.js';
+
+import {
+  getAudioEnabled, setAudioEnabled,
+  getSpeechEnabled, setSpeechEnabled,
+  playDiceRoll, playDiceTick, playDiceSettle,
+  playTokenStep, playTokenLand,
+  playPassMobilization,
+  playPurchase, playRentPaid, playCardDraw,
+  playExile, playVictory, playTurnEnd,
+  speak, cancelSpeech,
+} from './audio.js';
+
+// ---------------------------------------------------------------------------
+// Sound / effect hooks — wired to audio.js at boot
+// ---------------------------------------------------------------------------
+const HOOKS = {
+  onRollStart:    () => { playDiceRoll(); },
+  onTick:         () => { playDiceTick(); },
+  onSettle:       () => { playDiceSettle(); },
+  onSummaryShown: () => {},
+};
+export function setDiceHooks(h) { Object.assign(HOOKS, h); }
+
+// ---------------------------------------------------------------------------
+// Turn Summary settings — persisted in localStorage
+// ---------------------------------------------------------------------------
+function getTurnSummaryEnabled() {
+  try { return localStorage.getItem('turnSummaryEnabled') !== 'false'; }
+  catch { return true; }
+}
+function setTurnSummaryEnabled(val) {
+  try { localStorage.setItem('turnSummaryEnabled', val ? 'true' : 'false'); }
+  catch { /* no-op in environments without localStorage */ }
+}
+
+// ---------------------------------------------------------------------------
+// Speech narration — scan new currentTurnEvents each render and speak them
+// Uses WeakSet so references are cleaned up when events array is replaced.
+// ---------------------------------------------------------------------------
+const _spokenEvents = new WeakSet();
+
+function speakEvent(e) {
+  switch (e.type) {
+    case 'turn_started':
+      cancelSpeech();
+      speak(`${e.playerName ?? currentPlayer().name}'s turn.`, { interrupt: true });
+      break;
+    case 'roll':
+      if (e.isDoubles) speak(`Doubles! ${e.dice[0]} and ${e.dice[1]}.`);
+      else speak(`${e.dice[0] + e.dice[1]}.`);
+      break;
+    case 'move':
+      speak(e.spaceName ?? '');
+      break;
+    case 'pass_mobilization':
+      speak('Mobilization! Collect two hundred.');
+      playPassMobilization();
+      break;
+    case 'rent_paid':
+      speak(`Rent. ${e.amount} francs.`);
+      playRentPaid();
+      break;
+    case 'tax_paid':
+      speak(`Tax levy. ${e.amount} francs.`);
+      break;
+    case 'purchase':
+      speak(`${e.spaceName}, acquired.`);
+      playPurchase();
+      break;
+    case 'card_drawn':
+      speak(e.cardText ?? 'Orders received.');
+      playCardDraw();
+      break;
+    case 'sent_to_exile':
+      speak(`${currentPlayer().name}... exiled to Elba!`, { pitch: 0.75, rate: 0.8 });
+      playExile();
+      break;
+    case 'escaped_exile':
+      speak('Escaped!');
+      break;
+    case 'turn_skipped':
+      speak(`${currentPlayer().name} winters in camp.`);
+      break;
+  }
+}
+
+function speakNewEvents() {
+  for (const e of state.currentTurnEvents) {
+    if (_spokenEvents.has(e)) continue;
+    _spokenEvents.add(e);
+    speakEvent(e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Treasury delta — net money change for the completed turn
+// Uses gain/loss events plus rent_paid and purchase (which don't emit loss).
+// ---------------------------------------------------------------------------
+export function calcTreasuryDelta(events) {
+  let net = 0;
+  for (const e of events) {
+    if (e.type === 'gain')      net += e.amount  || 0;
+    if (e.type === 'loss')      net -= e.amount  || 0;
+    if (e.type === 'rent_paid') net -= e.amount  || 0;
+    if (e.type === 'purchase')  net -= e.price   || 0;
+  }
+  return net;
+}
 
 // ---------------------------------------------------------------------------
 // Top-level render
@@ -48,6 +158,7 @@ export function render() {
         ${renderPlayers()}
         ${renderHoldings()}
         ${renderActions()}
+        ${renderSettings()}
         ${renderSelectedSpace()}
         ${renderLog()}
       </div>
@@ -64,7 +175,21 @@ export function render() {
   if (state.phase === 'gameOver') {
     document.body.insertAdjacentHTML('beforeend', renderVictory());
     attachVictoryHandlers();
+    playVictory();
+    if (state.winner) speak(`${state.winner.name} wins the campaign!`, { rate: 0.8, pitch: 1.1 });
   }
+  if (state.pendingTurnSummary) {
+    if (getTurnSummaryEnabled()) {
+      document.body.insertAdjacentHTML('beforeend', renderTurnSummary());
+      attachTurnSummaryHandlers();
+      HOOKS.onSummaryShown();
+    } else {
+      // Settings off — clear immediately so the next player can act
+      state.pendingTurnSummary = null;
+    }
+  }
+
+  speakNewEvents();
 }
 
 // ---------------------------------------------------------------------------
@@ -274,9 +399,13 @@ function renderTokens(players) {
   if (players.length === 0) return '';
   const visible = players.slice(0, 2);
   const overflow = players.length - visible.length;
-  const dots = visible.map(p =>
-    `<div class="player-token" style="background:${p.color}" title="${p.name}"></div>`
-  ).join('');
+  const dots = visible.map(p => {
+    const monogram = p.commander?.monogram ?? '';
+    const isActive = p.id === state.players[state.current]?.id;
+    return `<div class="player-token${isActive ? ' active-player' : ''}" style="background:${p.color}" title="${p.name}${monogram ? ' · ' + p.commander.name : ''}">
+      ${monogram ? `<span class="token-monogram">${monogram}</span>` : ''}
+    </div>`;
+  }).join('');
   const badge = overflow > 0
     ? `<div class="token-overflow">+${overflow}</div>`
     : '';
@@ -352,10 +481,20 @@ function renderBoard() {
 
     const buildingMarker = renderBuildingMarker(buildings);
 
+    const ownerTint = owner
+      ? `background: linear-gradient(135deg, ${owner.color}2a 0%, ${owner.color}10 100%);`
+      : '';
+
+    const battleClass  = sp.battle  ? 'is-battle'  : '';
+    const capitalClass = sp.capital ? 'is-capital' : '';
+    const cornerSub = sp.type === 'corner'
+      ? (sp.i === 0 ? 'march-start' : sp.i === 30 ? 'exile-goto' : sp.i === 20 ? 'free-parley' : '')
+      : '';
+
     return `
-      <div class="space ${sp.type === 'corner' ? 'corner' : ''} ${isSelected ? 'selected' : ''}"
+      <div class="space ${sp.type === 'corner' ? 'corner' : ''} ${battleClass} ${capitalClass} ${cornerSub} ${isSelected ? 'selected' : ''}"
            data-idx="${sp.i}"
-           style="grid-column:${pos.col};grid-row:${pos.row};">
+           style="grid-column:${pos.col};grid-row:${pos.row};${ownerTint}">
         ${inner}
         ${ownershipFlag}
         ${buildingMarker}
@@ -582,7 +721,7 @@ function renderActions() {
   return `
     <div class="panel">
       <div class="panel-title">Imperial Council</div>
-      <button class="btn crimson" id="roll-btn" ${(!canRoll || state.pendingAction) ? 'disabled' : ''}>
+      <button class="btn crimson" id="roll-btn" ${(!canRoll || state.pendingAction || state.diceRolling) ? 'disabled' : ''}>
         ${p.inExile ? 'Attempt Escape' : 'Roll the Dice'}
       </button>
       ${buildableProps.length > 0 ? `
@@ -769,14 +908,7 @@ function renderVictory() {
 // ---------------------------------------------------------------------------
 
 function attachGameHandlers() {
-  document.getElementById('roll-btn')?.addEventListener('click', () => {
-    document.querySelectorAll('.die').forEach(d => {
-      d.classList.remove('rolling');
-      void d.offsetWidth;
-      d.classList.add('rolling');
-    });
-    setTimeout(() => rollDice(), 300);
-  });
+  document.getElementById('roll-btn')?.addEventListener('click', () => rollDice());
 
   document.getElementById('end-turn-btn')?.addEventListener('click', () => endTurn());
 
@@ -812,6 +944,19 @@ function attachGameHandlers() {
       state.expandedPlayer = state.expandedPlayer === id ? null : id;
       render();
     });
+  });
+
+  document.getElementById('ts-toggle')?.addEventListener('change', e => {
+    setTurnSummaryEnabled(e.target.checked);
+  });
+
+  document.getElementById('audio-toggle')?.addEventListener('change', e => {
+    setAudioEnabled(e.target.checked);
+  });
+
+  document.getElementById('speech-toggle')?.addEventListener('change', e => {
+    setSpeechEnabled(e.target.checked);
+    if (!e.target.checked) cancelSpeech();
   });
 
   attachDebugHandlers();
@@ -882,7 +1027,339 @@ function attachDebugHandlers() {
 }
 
 // ---------------------------------------------------------------------------
+// Turn Summary Modal
+// ---------------------------------------------------------------------------
+
+function formatCmdAbilityDetail(e) {
+  const { target, amount, abilityName, context } = e;
+  switch (target) {
+    case 'battle_bonus':
+      return { main: `✦ ${abilityName}: +${amount}₣`, note: 'Battle Territory bonus' };
+    case 'doubles_bonus':
+      return { main: `✦ ${abilityName}: +${amount}₣`, note: 'Cavalry Charge on doubles' };
+    case 'rent_increase':
+      return { main: `✦ ${abilityName}`, note: `Rent raised to ${context?.adjustedRent ?? '?'}₣ for ${context?.spaceName ?? ''}` };
+    case 'rent_reduction':
+      return { main: `✦ ${abilityName}`, note: `Rent reduced to ${context?.adjustedRent ?? '?'}₣ for ${context?.spaceName ?? ''}` };
+    case 'bank_bonus':
+      return { main: `✦ ${abilityName}: +${amount}₣`, note: `Bank bonus — ${context?.spaceName ?? ''}` };
+    case 'exile_prevention':
+      return context?.success
+        ? { main: `✦ ${abilityName}`, note: `Rolled ${context.roll} — exile averted!` }
+        : { main: `✦ ${abilityName}`, note: `Rolled ${context.roll} — exiled regardless` };
+    case 'immediate_move':
+      return { main: `✦ ${abilityName}`, note: 'Marches immediately after escape' };
+    default:
+      return { main: `✦ ${abilityName}${amount != null ? ': +' + amount + '₣' : ''}`, note: '' };
+  }
+}
+
+function renderTurnSummaryEvent(e, summary) {
+  switch (e.type) {
+
+    case 'roll':
+      return `
+        <div class="ts-event ts-roll">
+          <span class="ts-roll-icon">🎲</span>
+          <span class="ts-roll-text">Rolled ${e.dice[0]} + ${e.dice[1]} &nbsp;(${e.total})</span>
+          ${e.isDoubles ? '<span class="ts-doubles">✦ Doubles!</span>' : ''}
+        </div>`;
+
+    case 'move':
+      return `
+        <div class="ts-event ts-move">
+          <span class="ts-move-arrow">→</span>
+          Moved to <strong>${e.spaceName}</strong>
+        </div>`;
+
+    case 'pass_mobilization':
+      return `
+        <div class="ts-event ts-gain-line">
+          🏛 +200₣ — Passed Mobilization
+        </div>`;
+
+    case 'purchase': {
+      const sp = BOARD[e.spaceIndex];
+      return `
+        <div class="ts-event ts-purchase">
+          <div class="ts-purchase-title">🪙 Acquired ${e.spaceName}</div>
+          <div class="ts-purchase-price">−${e.price}₣</div>
+          ${sp?.battle ? '<div class="ts-battle-badge">★ Battle Territory</div>' : ''}
+        </div>`;
+    }
+
+    case 'purchase_declined':
+      return `
+        <div class="ts-event ts-declined">
+          <em>Declined to acquire ${e.spaceName}.</em>
+        </div>`;
+
+    case 'building_built':
+      return `
+        <div class="ts-event ts-building ${e.isArmyCorps ? 'ts-army-corps' : ''}">
+          <span>${e.isArmyCorps ? '★' : '🪖'} Built ${e.levelName} at ${e.spaceName}</span>
+          <span class="ts-cost">−${e.cost}₣</span>
+        </div>`;
+
+    case 'rent_paid':
+      return `
+        <div class="ts-event ts-rent-paid">
+          Paid <strong>${e.amount}₣</strong> rent to ${e.paidToName} for ${e.spaceName}
+        </div>`;
+
+    case 'rent_received':
+      return `
+        <div class="ts-event ts-rent-received">
+          Received <strong>${e.amount}₣</strong> rent from ${e.paidByName} for ${e.spaceName}
+        </div>`;
+
+    case 'tax_paid':
+      return `
+        <div class="ts-event ts-tax-paid">
+          ⚒ Paid <strong>${e.amount}₣</strong> — ${e.spaceName}
+        </div>`;
+
+    case 'card_drawn': {
+      const icon  = e.subtype === 'orders' ? '📜' : '🕊';
+      const label = e.subtype === 'orders' ? 'Imperial Orders' : 'Diplomatic Dispatch';
+      return `
+        <div class="ts-event ts-card">
+          <div class="ts-card-label">${icon} ${label}</div>
+          <div class="ts-card-text">"${e.cardText}"</div>
+        </div>`;
+    }
+
+    case 'card_effect':
+      return `
+        <div class="ts-event ts-card-effect">
+          → ${e.description}
+        </div>`;
+
+    case 'sent_to_exile': {
+      const reason = e.reason === 'three_doubles' ? 'Three doubles in a row'
+        : e.reason === 'card'                     ? 'As told above — card effect'
+        : 'Landed on the Exile corner';
+      return `
+        <div class="ts-event ts-exile">
+          <div class="ts-exile-title">⚓ Exiled to Elba</div>
+          <div class="ts-exile-reason">${reason}</div>
+        </div>`;
+    }
+
+    case 'exile_attempt':
+      if (e.dice == null) return ''; // pay/card method — covered by escaped_exile
+      return e.success
+        ? `<div class="ts-event ts-exile-success">Rolled ${e.dice[0]}+${e.dice[1]} — ✦ Doubles! Freedom!</div>`
+        : `<div class="ts-event ts-muted">Rolled ${e.dice[0]}+${e.dice[1]} — no escape${e.exileTurns ? ` (turn ${e.exileTurns}/3)` : ''}</div>`;
+
+    case 'escaped_exile': {
+      const howText = e.method === 'doubles' ? 'by rolling doubles'
+        : e.method === 'pay'                 ? 'paid 50₣ for release'
+        : 'used the Pardon Card';
+      return `<div class="ts-event ts-escape">✓ Escaped Exile — ${howText}</div>`;
+    }
+
+    case 'commander_ability': {
+      const cmdPlayer = state.players.find(p => p.commander?.id === e.commanderId);
+      const cmdColor  = cmdPlayer?.color ?? summary.playerColor;
+      const { main, note } = formatCmdAbilityDetail(e);
+      return `
+        <div class="ts-event ts-commander-ability" style="border-left-color:${cmdColor}">
+          <div class="ts-cmd-title" style="color:${cmdColor}">${main}</div>
+          ${note ? `<div class="ts-cmd-note">${note}</div>` : ''}
+        </div>`;
+    }
+
+    case 'collapse_entered':
+      return `
+        <div class="ts-event ts-collapse">
+          <div class="ts-collapse-title">⚠ Entered Collapse State</div>
+          <div class="ts-collapse-note">Cannot purchase or build. Pays 50% rent. Recovers above 200₣.</div>
+        </div>`;
+
+    case 'collapse_recovered':
+      return `<div class="ts-event ts-recover">✓ Recovered from Collapse State</div>`;
+
+    case 'turn_skipped':
+      return `<div class="ts-event ts-skipped">Skipped this turn — winter quarters</div>`;
+
+    // Lifecycle and aggregated money events are not displayed
+    case 'gain':
+    case 'loss':
+    case 'turn_started':
+    case 'turn_ended':
+    case 'round_started':
+      return '';
+
+    default:
+      return '';
+  }
+}
+
+function renderTurnSummary() {
+  const s = state.pendingTurnSummary;
+  if (!s) return '';
+
+  const net        = calcTreasuryDelta(s.events);
+  const moneyAfter = s.moneyAfter;
+  const moneyBefore = moneyAfter - net;
+
+  const eventRows = s.events
+    .map(e => renderTurnSummaryEvent(e, s))
+    .filter(Boolean)
+    .join('');
+
+  const deltaSign  = net > 0 ? '▲' : net < 0 ? '▼' : '→';
+  const deltaClass = net > 0 ? 'ts-delta-gain' : net < 0 ? 'ts-delta-loss' : 'ts-delta-neutral';
+  const treasuryRow = net !== 0 ? `
+    <div class="ts-treasury">
+      <div class="ts-treasury-row">
+        <span class="ts-treasury-label">Treasury</span>
+        <span class="ts-treasury-values">${moneyBefore.toLocaleString()}₣ → ${moneyAfter.toLocaleString()}₣</span>
+      </div>
+      <div class="${deltaClass}">(${deltaSign} ${Math.abs(net).toLocaleString()}₣)</div>
+    </div>
+  ` : '';
+
+  const subtitleHtml = s.commanderTitle
+    ? `<div class="ts-subtitle">${s.commanderTitle}</div>`
+    : '';
+
+  return `
+    <div class="modal-overlay ts-overlay" id="ts-overlay">
+      <div class="modal ts-modal">
+        <div class="ts-header">
+          <div class="ts-turn-label">Turn ${s.turnNumber} · ${s.playerName}</div>
+          ${subtitleHtml}
+          <hr class="ts-rule">
+        </div>
+        <div class="ts-body">
+          ${eventRows || '<div class="ts-event ts-muted">An uneventful turn.</div>'}
+        </div>
+        <div class="ts-footer">
+          <hr class="ts-rule">
+          ${treasuryRow}
+          <div class="ts-actions">
+            <button class="btn gold" id="ts-continue-btn">Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function attachTurnSummaryHandlers() {
+  document.getElementById('ts-continue-btn')?.addEventListener('click', () => {
+    cancelSpeech();
+    state.pendingTurnSummary = null;
+    render();
+  });
+}
+
+function renderSettings() {
+  return `
+    <div class="panel panel-settings">
+      <label class="settings-toggle-row">
+        <input type="checkbox" id="ts-toggle" ${getTurnSummaryEnabled() ? 'checked' : ''}>
+        <span>Turn Summary</span>
+      </label>
+      <label class="settings-toggle-row">
+        <input type="checkbox" id="audio-toggle" ${getAudioEnabled() ? 'checked' : ''}>
+        <span>Sound Effects</span>
+      </label>
+      <label class="settings-toggle-row">
+        <input type="checkbox" id="speech-toggle" ${getSpeechEnabled() ? 'checked' : ''}>
+        <span>Narration</span>
+      </label>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Step-by-step token movement animation
+// Moves the token one space at a time at STEP_MS intervals.
+// Only re-renders the board container on each step (not the full sidebar)
+// to keep the animation smooth without thrashing the entire DOM.
+// ---------------------------------------------------------------------------
+function animateMove(p, fromPos, steps, onSettled) {
+  const STEP_MS = 160;
+  const dir     = steps >= 0 ? 1 : -1;
+  const total   = Math.abs(steps);
+  let   step    = 0;
+
+  function boardContainer() {
+    return document.querySelector('.board-container');
+  }
+
+  function doStep() {
+    step++;
+    const pos = ((fromPos + step * dir) % 40 + 40) % 40;
+    p.position = pos;
+
+    // Partial re-render: only the board, not the whole page
+    const bc = boardContainer();
+    if (bc) bc.innerHTML = renderBoard();
+
+    if (step < total) {
+      playTokenStep();
+      setTimeout(doStep, STEP_MS);
+    } else {
+      playTokenLand();
+      onSettled();
+    }
+  }
+
+  doStep();
+}
+
+// ---------------------------------------------------------------------------
+// Dice tumble animation
+// Rapidly cycles random faces on each die for ~700ms, then settles on the
+// final value with a short bounce. The two dice are offset by 100ms so they
+// don't land at exactly the same moment.
+// ---------------------------------------------------------------------------
+function animateDiceRoll(finalValues, callback) {
+  const dies = document.querySelectorAll('.die');
+  if (!dies.length) { callback(); return; }
+
+  HOOKS.onRollStart();
+
+  const TUMBLE_MS  = 700;
+  const TICK_MS    = 70;   // ~10 face changes per die
+  const DIE_OFFSET = 100;  // ms between die starts
+
+  const total = Math.min(dies.length, finalValues.length);
+  let settled = 0;
+
+  for (let i = 0; i < total; i++) {
+    const dieEl   = dies[i];
+    const finalVal = finalValues[i];
+
+    setTimeout(() => {
+      let elapsed = 0;
+      dieEl.classList.remove('settled');
+
+      const interval = setInterval(() => {
+        elapsed += TICK_MS;
+        if (elapsed >= TUMBLE_MS) {
+          clearInterval(interval);
+          dieEl.textContent = finalVal;
+          dieEl.classList.add('settled');
+          HOOKS.onSettle();
+          settled++;
+          if (settled === total) callback();
+        } else {
+          dieEl.textContent = 1 + Math.floor(Math.random() * 6);
+        }
+      }, TICK_MS);
+    }, i * DIE_OFFSET);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 registerRenderer(render);
+registerDiceAnimator(animateDiceRoll);
+registerMoveAnimator(animateMove);
 render();

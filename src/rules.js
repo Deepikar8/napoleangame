@@ -17,6 +17,42 @@ let _render = () => {};
 export function registerRenderer(fn) { _render = fn; }
 
 // ---------------------------------------------------------------------------
+// Dice animator injection
+// render.js calls registerDiceAnimator(animateDiceRoll) once at boot.
+// The no-op default fires callback() synchronously so tests work without DOM.
+// ---------------------------------------------------------------------------
+let _animateDice = (values, cb) => cb();
+export function registerDiceAnimator(fn) { _animateDice = fn; }
+
+// ---------------------------------------------------------------------------
+// Move animator injection
+// render.js calls registerMoveAnimator(animateMove) once at boot.
+// Default: synchronous teleport — sets position and calls onSettled() immediately
+// so tests work without DOM or timers.
+// Signature: fn(player, fromPos, steps, onSettled)
+// The animator is responsible for updating player.position before calling onSettled.
+// ---------------------------------------------------------------------------
+let _animateMove = (p, from, steps, onSettled) => {
+  let pos = (from + steps) % 40;
+  if (pos < 0) pos += 40;
+  p.position = pos;
+  onSettled();
+};
+export function registerMoveAnimator(fn) { _animateMove = fn; }
+
+// ---------------------------------------------------------------------------
+// Anti-repeat die roll
+// Re-rolls once if the same face appears as lastValue, reducing the probability
+// of an identical back-to-back result from 1/6 to ~1/36.
+// Pass lastValue=0 (or omit) to disable bias (0 can never be a valid result).
+// ---------------------------------------------------------------------------
+export function rollDie(lastValue = 0) {
+  let val = 1 + Math.floor(Math.random() * 6);
+  if (val === lastValue) val = 1 + Math.floor(Math.random() * 6);
+  return val;
+}
+
+// ---------------------------------------------------------------------------
 // Query helpers
 // ---------------------------------------------------------------------------
 
@@ -271,6 +307,9 @@ export function startGame(playerSetups) {
   state.winReason = '';
   state.currentTurnEvents = [];
   state.gameEvents = [];
+  state.diceRolling = false;
+  state.lastDiceRolled = [0, 0];
+  state.pendingTurnSummary = null;
   log(`Campaign begins. ${state.players.length} commanders march to glory.`, 'major');
   emit({ type: 'turn_started', isExileTurn: false });
   _render();
@@ -339,19 +378,18 @@ export function payRent(payer, receiver, amount) {
 
 export function movePlayer(p, steps) {
   const oldPos = p.position;
-  let newPos = (oldPos + steps) % 40;
-  if (newPos < 0) newPos += 40;
-  const dest = spaceAt(newPos);
-  emit({ type: 'move', from: oldPos, to: newPos, spaceName: dest.name, spaceType: dest.type });
-  if (steps > 0 && oldPos + steps >= 40) {
-    p.money += 200;
-    log(`${p.name} passes Mobilization → +200₣.`, 'gain');
-    emit({ type: 'pass_mobilization', amount: 200 });
-    emit({ type: 'gain', amount: 200, source: 'mobilization' });
-  }
-  p.position = newPos;
-  _render();
-  setTimeout(() => resolveSpace(), 600);
+  _animateMove(p, oldPos, steps, () => {
+    const dest = spaceAt(p.position);
+    emit({ type: 'move', from: oldPos, to: p.position, spaceName: dest.name, spaceType: dest.type });
+    if (steps > 0 && oldPos + steps >= 40) {
+      p.money += 200;
+      log(`${p.name} passes Mobilization → +200₣.`, 'gain');
+      emit({ type: 'pass_mobilization', amount: 200 });
+      emit({ type: 'gain', amount: 200, source: 'mobilization' });
+    }
+    _render();
+    setTimeout(() => resolveSpace(), 500);
+  });
 }
 
 export function resolveSpace() {
@@ -710,33 +748,40 @@ export function exileDiceRoll() {
   const p = currentPlayer();
   const d1 = 1 + Math.floor(Math.random() * 6);
   const d2 = 1 + Math.floor(Math.random() * 6);
-  state.lastRoll = [d1, d2];
-  state.rolledThisTurn = true;
   state.pendingAction = null;
+  state.diceRolling = true;
+  _render(); // disable Roll button immediately
 
-  if (d1 === d2) {
-    p.inExile = false;
-    p.exileTurns = 0;
-    log(`${p.name} rolls doubles (${d1}+${d2}) and escapes Exile!`, 'major');
-    emit({ type: 'exile_attempt', method: 'doubles', success: true, dice: [d1, d2] });
-    emit({ type: 'escaped_exile', method: 'doubles' });
-    movePlayer(p, d1 + d2);
-  } else {
-    p.exileTurns++;
-    log(`${p.name} rolls ${d1}+${d2}, no escape.`);
-    emit({ type: 'exile_attempt', method: 'doubles', success: false, dice: [d1, d2] });
-    if (p.exileTurns >= 3) {
-      log(`${p.name} must pay 50₣ after 3 failed attempts.`, 'loss');
-      payMoney(p, 50);
+  _animateDice([d1, d2], () => {
+    state.diceRolling = false;
+    state.lastRoll = [d1, d2];
+    state.rolledThisTurn = true;
+
+    if (d1 === d2) {
       p.inExile = false;
       p.exileTurns = 0;
-      emit({ type: 'escaped_exile', method: 'pay' });
+      log(`${p.name} rolls doubles (${d1}+${d2}) and escapes Exile!`, 'major');
+      emit({ type: 'exile_attempt', method: 'doubles', success: true, dice: [d1, d2] });
+      emit({ type: 'escaped_exile', method: 'doubles' });
       movePlayer(p, d1 + d2);
     } else {
-      _render();
-      setTimeout(() => endTurn(), 1200);
+      p.exileTurns++;
+      log(`${p.name} rolls ${d1}+${d2}, no escape.`);
+      emit({ type: 'exile_attempt', method: 'doubles', success: false, dice: [d1, d2], exileTurns: p.exileTurns });
+      if (p.exileTurns >= 3) {
+        log(`${p.name} must pay 50₣ after 3 failed attempts.`, 'loss');
+        payMoney(p, 50);
+        emit({ type: 'loss', amount: 50, source: 'exile_pay' });
+        p.inExile = false;
+        p.exileTurns = 0;
+        emit({ type: 'escaped_exile', method: 'pay' });
+        movePlayer(p, d1 + d2);
+      } else {
+        _render();
+        setTimeout(() => endTurn(), 1200);
+      }
     }
-  }
+  });
 }
 
 export function exilePay() {
@@ -749,6 +794,7 @@ export function exilePay() {
     return;
   }
   payMoney(p, 50);
+  emit({ type: 'loss', amount: 50, source: 'exile_pay' });
   p.inExile = false;
   p.exileTurns = 0;
   log(`${p.name} pays 50₣ for release from Exile.`);
@@ -771,11 +817,13 @@ export function exilePay() {
 
 export function rollDice() {
   if (state.rolledThisTurn && state.lastRoll[0] !== state.lastRoll[1]) return;
+  if (state.diceRolling) return;
   const p = currentPlayer();
 
   if (p.skipNext) {
     p.skipNext = false;
     log(`${p.name} skips their turn (winter quarters).`);
+    emit({ type: 'turn_skipped', reason: 'winter_quarters' });
     state.pendingAction = null;
     endTurn();
     return;
@@ -786,39 +834,49 @@ export function rollDice() {
     return;
   }
 
-  const d1 = 1 + Math.floor(Math.random() * 6);
-  const d2 = 1 + Math.floor(Math.random() * 6);
-  state.lastRoll = [d1, d2];
-  state.rolledThisTurn = true;
+  // Pre-calculate final values; anti-repeat bias uses last rolled dice (not lastRoll,
+  // which is reset to [0,0] on endTurn and used for the doubles check there).
+  const d1 = rollDie(state.lastDiceRolled[0]);
+  const d2 = rollDie(state.lastDiceRolled[1]);
 
-  emit({ type: 'roll', dice: [d1, d2], total: d1 + d2, isDoubles: d1 === d2 });
+  state.diceRolling = true;
+  _render(); // disable Roll button immediately
 
-  if (d1 === d2) {
-    state.doubleCount++;
-    if (state.doubleCount >= 3) {
-      // Third consecutive double → exile. Murat does NOT collect on this roll.
-      log(`${p.name} rolled three doubles — straight to Exile!`, 'loss');
-      sendToExile(p, 'three_doubles');
+  _animateDice([d1, d2], () => {
+    state.diceRolling = false;
+    state.lastDiceRolled = [d1, d2];
+    state.lastRoll = [d1, d2];
+    state.rolledThisTurn = true;
+
+    emit({ type: 'roll', dice: [d1, d2], total: d1 + d2, isDoubles: d1 === d2 });
+
+    if (d1 === d2) {
+      state.doubleCount++;
+      if (state.doubleCount >= 3) {
+        // Third consecutive double → exile. Murat does NOT collect on this roll.
+        log(`${p.name} rolled three doubles — straight to Exile!`, 'loss');
+        sendToExile(p, 'three_doubles');
+        state.doubleCount = 0;
+        _render();
+        setTimeout(() => endTurn(), 1500);
+        return;
+      }
+      // Murat: Cavalry Charge — +75₣ on doubles 1 and 2
+      if (p.commander?.ability === 'cavalryCharge') {
+        emit({ type: 'commander_ability', commanderId: 'murat', abilityName: 'Cavalry Charge', amount: 75, target: 'doubles_bonus', context: { doubleCount: state.doubleCount, dice: [d1, d2] } });
+        p.money += 75;
+        checkRecovery(p);
+        log(`${p.name}'s Cavalry Charge! Murat leads from the front — +75₣.`, 'gain');
+        emit({ type: 'gain', amount: 75, source: 'commander_ability' });
+      }
+      log(`${p.name} rolls ${d1}+${d2} (doubles!) → moves ${d1 + d2}.`);
+    } else {
       state.doubleCount = 0;
-      _render();
-      setTimeout(() => endTurn(), 1500);
-      return;
+      log(`${p.name} rolls ${d1}+${d2} → moves ${d1 + d2}.`);
     }
-    // Murat: Cavalry Charge — +75₣ on doubles 1 and 2
-    if (p.commander?.ability === 'cavalryCharge') {
-      emit({ type: 'commander_ability', commanderId: 'murat', abilityName: 'Cavalry Charge', amount: 75, target: 'doubles_bonus', context: { doubleCount: state.doubleCount, dice: [d1, d2] } });
-      p.money += 75;
-      checkRecovery(p);
-      log(`${p.name}'s Cavalry Charge! Murat leads from the front — +75₣.`, 'gain');
-      emit({ type: 'gain', amount: 75, source: 'commander_ability' });
-    }
-    log(`${p.name} rolls ${d1}+${d2} (doubles!) → moves ${d1 + d2}.`);
-  } else {
-    state.doubleCount = 0;
-    log(`${p.name} rolls ${d1}+${d2} → moves ${d1 + d2}.`);
-  }
 
-  movePlayer(p, d1 + d2);
+    movePlayer(p, d1 + d2);
+  });
 }
 
 export function endTurn() {
@@ -835,6 +893,13 @@ export function endTurn() {
 
   emit({ type: 'turn_ended' });
 
+  // Capture turn summary BEFORE clearing currentTurnEvents.
+  // Trivial turns (only lifecycle bookkeeping) are skipped; all others queue a summary.
+  const LIFECYCLE = new Set(['turn_started', 'turn_ended', 'round_started']);
+  const summaryEvents = [...state.currentTurnEvents];
+  const hasConsequential = summaryEvents.some(e => !LIFECYCLE.has(e.type));
+  const turnNumber = (state.round - 1) * state.players.length + state.current + 1;
+
   state.rolledThisTurn = false;
   state.lastRoll = [0, 0];
   state.doubleCount = 0;
@@ -850,6 +915,21 @@ export function endTurn() {
 
   emit({ type: 'turn_started', isExileTurn: state.players[state.current]?.inExile ?? false });
 
-  if (checkVictory()) { _render(); return; }
+  if (checkVictory()) { _render(); return; } // game over — skip summary
+
+  // Queue summary for render() to display (or auto-clear if settings off)
+  if (hasConsequential) {
+    state.pendingTurnSummary = {
+      events: summaryEvents,
+      playerId: p.id,
+      playerName: p.name,
+      playerColor: p.color,
+      commanderName: p.commander?.name ?? null,
+      commanderTitle: p.commander?.title ?? null,
+      moneyAfter: p.money,
+      turnNumber,
+    };
+  }
+
   _render();
 }

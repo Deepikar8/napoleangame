@@ -10,8 +10,14 @@ A Napoleonic Monopoly-style browser board game for 2–5 players.
 
 ## Play
 
-Open `index.html` in any modern browser — no build step required.  
-GitHub Pages auto-publishes from `main` on every push.
+Serve locally (required for ES modules):
+
+```bash
+python3 -m http.server 8080
+# then open http://localhost:8080
+```
+
+GitHub Pages auto-publishes from `main` on every push — no build step required.
 
 ---
 
@@ -26,10 +32,14 @@ src/
   commanders.js       # COMMANDERS array (7 historical figures) + getCommanderById
   rules.js            # All game logic: rent, building, victory, exile, turns
   render.js           # DOM rendering, event handlers, boot entry-point
+  audio.js            # Web Audio API sounds + Web Speech API narration (no external files)
 tests/
   rules.test.js       # Vitest tests for calculateRent, canBuild,
                       #   checkStrategicVictory, and the exile flow
   commanders.test.js  # Tests for all 7 commander passive abilities
+  dice.test.js        # Tests for rollDie anti-repeat, diceRolling flag, animator injection
+  turnSummary.test.js # Tests for pendingTurnSummary population, trivial-turn skip, game-over
+  events.test.js      # Tests for the structured event system
 .github/
   workflows/
     deploy.yml        # CI: run tests → deploy to GitHub Pages on push to main
@@ -47,6 +57,60 @@ npm run test:run     # single run (used by CI)
 
 No bundler is needed.  The game uses native ES modules (`type="module"`), which
 every evergreen browser supports.
+
+---
+
+## Features
+
+### Board & Visuals
+- **Napoleonic parchment theme** — aged paper background, ink typography, gold accents throughout
+- **Special space highlights** — battle territories (gold border + ★ watermark), Paris capital (blue border + ♛), Mobilization corner (gold glow), Go-to-Exile corner (dark crimson)
+- **Owner tinting** — each claimed space washes with its owner's color at low opacity, readable at a glance
+- **Triangle ownership flag** — clipped corner triangle shows owner color on each property
+- **Medallion tokens** — 14 px gold-bordered coins with commander monogram engraved; the active player's token pulses
+- **Animated center eagle** — the ⚜ breathes with a slow gold glow
+
+### Dice
+- **Tumble animation** — ~10 random face changes over 700 ms before settling with a bounce
+- **Staggered settle** — the two dice land 100 ms apart so they don't snap simultaneously
+- **Anti-repeat bias** — `rollDie(lastValue)` re-rolls once if the same face would repeat back-to-back, reducing identical repeats from 1/6 to ~1/36
+
+### Token movement
+- Tokens hop **one space at a time** at 160 ms intervals — rolling a 7 takes ~1.1 s, a 12 takes ~1.9 s
+- Passing Mobilization mid-move triggers the collect-200 bonus at the correct step
+
+### Sound Effects (Web Audio API — no files)
+| Event | Sound |
+|-------|-------|
+| Roll button | Rattling noise burst |
+| Each die face tick | Soft high click |
+| Die settles | Sharp click + bounce |
+| Token step | Wooden tap |
+| Token lands | Heavy thud |
+| Pass Mobilization | Upward 4-note arpeggio |
+| Purchase territory | Descending coin cascade |
+| Pay rent | Outgoing coins |
+| Draw card | Paper whoosh |
+| Exiled to Elba | Descending sawtooth drone |
+| Victory | Ascending fanfare + chord |
+
+### Narration (Web Speech API — no files)
+The game announces key events aloud in a low, authoritative voice:
+- "[Player]'s turn."
+- Dice total — "Seven." or "Doubles! Three and three."
+- Space name on landing
+- "Mobilization! Collect two hundred."
+- Rent, tax, purchase, exile, escape, skip, and victory lines
+
+### Turn Summary
+After every non-trivial turn a modal lists all turn events with treasury delta.
+Commander ability callouts are highlighted separately.
+
+### Settings
+Three toggles in the sidebar (all persist across page refreshes):
+- **Turn Summary** — show/hide the post-turn modal
+- **Sound Effects** — enable/disable all audio
+- **Narration** — enable/disable speech; clicking Continue also cancels queued speech
 
 ---
 
@@ -112,8 +176,8 @@ Every Commander begins with **1 500₣** at Mobilization (space 0).
 
 ### Turn structure
 
-1. **Roll the dice** (2d6).
-2. Move the token.
+1. **Roll the dice** (2d6) — dice tumble for ~700 ms, each face cycling randomly before settling with a bounce.
+2. Move the token — hops space-by-space across the board (~160 ms per step) like a physical piece.
 3. Resolve the landed space:
    - **Unowned property/supply/economic** → offered for purchase (or skip if in Collapse State).
    - **Opponent's property** → pay rent.
@@ -256,24 +320,16 @@ Wellington lands on a Davout-owned territory: base × 1.25 × 0.75.
 
 ### Testing
 
-The Vitest suite covers:
+168 tests across 5 suites. Run with:
 
-| Function | What is tested |
-|----------|----------------|
-| `calculateRent` | Zero rent when unowned; base rent; monopoly doubling; rent table by building level; supply-line tiers; economic dice multipliers |
-| `canBuild` | All guard conditions (non-territory, not owner, collapsed, no monopoly, max level, even-build, insufficient funds) |
-| `checkStrategicVictory` | Missing Paris; Paris + 1 battle; Paris + 2 battles; Paris + 3 battles; battles owned by a rival |
-| `exileDiceRoll` | Doubles → escape + position; non-doubles → exileTurns++; 3rd failure → auto-pay + escape |
-| `exilePay` | Normal payment; can't afford; collapsed player |
-| `sendToExile` | Flags, position, doubleCount |
-| Collapse helpers | `payMoney`, `updateCollapseStatus`, `checkRecovery` |
-| `netWorth` | Cash only; cash + property; cash + property + buildings |
-| Napoleon ability | +50₣ on Battle Territory purchase; no bonus on ordinary territory |
-| Davout ability | Rent ×1.25 for rivals; applies at building levels; stacks with Wellington |
-| Wellington ability | Rent ×0.75 when paying rivals; no discount when paying own property |
-| Davout + Wellington | Applies ×1.25 then ×0.75; correct stacking order |
-| Murat ability | +75₣ on doubles 1 & 2; no bonus on 3rd (exile) doubles; no bonus on non-doubles |
-| Ney ability | Roll ≥ 5 averts exile; roll ≤ 4 proceeds; doubleCount reset in both outcomes |
-| Alexander ability | Scorched Earth +100₣ is a bank bonus, not included in `calculateRent` |
-| Blücher ability | `rollDice()` called immediately after `exilePay`; works for card escape too |
-| COMMANDERS data | 7 entries, 4 French + 3 Coalition, all required fields, unique ids |
+```bash
+npm run test:run
+```
+
+| Suite | What is tested |
+|-------|----------------|
+| **rules.test.js** | `calculateRent` (all tiers), `canBuild` (all guards), `checkStrategicVictory`, exile flow (`exileDiceRoll`, `exilePay`, `sendToExile`), collapse helpers, `netWorth` |
+| **commanders.test.js** | All 7 commander passive abilities; Davout + Wellington stacking; COMMANDERS data integrity |
+| **dice.test.js** | `rollDie` anti-repeat bias and distribution; `diceRolling` flag lifecycle; animator injection; `state.lastRoll` / `lastDiceRolled` after animation |
+| **turnSummary.test.js** | `pendingTurnSummary` population (playerName, color, money, turnNumber, commander fields); trivial-turn skip; game-over suppression; treasury event capture; exile loss events; doubles sequence; state.current advancement |
+| **events.test.js** | Structured event system — `emit`, `currentTurnEvents`, `gameEvents` accumulation |

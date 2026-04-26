@@ -63,6 +63,9 @@ function resetState(players = [makePlayer()]) {
   state.winReason = '';
   state.currentTurnEvents = [];
   state.gameEvents = [];
+  state.diceRolling = false;
+  state.lastDiceRolled = [0, 0];
+  state.pendingTurnSummary = null;
 }
 
 // Boards spaces useful across tests

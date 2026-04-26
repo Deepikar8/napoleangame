@@ -32,6 +32,9 @@ export const state = {
   winReason: '',
   currentTurnEvents: [], // cleared at the start of each new turn
   gameEvents: [],        // accumulates for entire game, never cleared
+  diceRolling: false,    // true while tumble animation plays; disables Roll button
+  lastDiceRolled: [0, 0], // tracks last d1/d2 for anti-repeat bias in rollDie
+  pendingTurnSummary: null, // set by endTurn(); cleared when Continue is clicked
 };
 
 export function shuffle(arr) {
