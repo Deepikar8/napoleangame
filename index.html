@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Empire &amp; Coalition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IM+Fell+English+SC&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --parchment: #e8dcc0;
+    --parchment-dark: #d4c4a0;
+    --parchment-shadow: #b8a47a;
+    --ink: #2a1f15;
+    --ink-faded: #5a4a35;
+    --gold: #b8902e;
+    --gold-bright: #d4a93e;
+    --crimson: #8b1d1d;
+    --crimson-dark: #5e1212;
+    --imperial-blue: #1e3a5f;
+    --imperial-blue-dark: #0f2238;
+    --forest: #2d4a2b;
+    --shadow: rgba(42, 31, 21, 0.35);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Cormorant Garamond', serif;
+    background:
+      radial-gradient(ellipse at top left, rgba(184, 144, 46, 0.15), transparent 50%),
+      radial-gradient(ellipse at bottom right, rgba(139, 29, 29, 0.12), transparent 50%),
+      linear-gradient(135deg, #1a1410 0%, #0d0a07 100%);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 20px;
+    overflow-x: auto;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 25% 25%, rgba(255,255,255,0.02) 0%, transparent 50%),
+      radial-gradient(circle at 75% 75%, rgba(255,255,255,0.02) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    max-width: 1600px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* === HEADER === */
+  .header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding: 24px;
+    border-top: 2px solid var(--gold);
+    border-bottom: 2px solid var(--gold);
+    position: relative;
+  }
+
+  .header::before, .header::after {
+    content: '✦';
+    position: absolute;
+    color: var(--gold);
+    font-size: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .header::before { left: 20px; }
+  .header::after  { right: 20px; }
+
+  .title {
+    font-family: 'IM Fell English SC', serif;
+    font-size: clamp(28px, 5vw, 48px);
+    color: var(--gold-bright);
+    letter-spacing: 0.15em;
+    text-shadow: 0 2px 8px rgba(184, 144, 46, 0.4);
+    line-height: 1;
+  }
+
+  .subtitle {
+    font-style: italic;
+    color: var(--parchment-dark);
+    margin-top: 8px;
+    letter-spacing: 0.1em;
+    font-size: 14px;
+  }
+
+  /* === LAYOUT === */
+  .game-area {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+  }
+
+  @media (max-width: 1200px) {
+    .game-area { grid-template-columns: 1fr; }
+  }
+
+  /* === BOARD === */
+  .board-container {
+    background:
+      radial-gradient(ellipse at center, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 3px double var(--ink-faded);
+    padding: 16px;
+    box-shadow: 0 20px 60px var(--shadow), inset 0 0 80px rgba(139, 29, 29, 0.08);
+    position: relative;
+  }
+
+  .board-container::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1px solid rgba(42, 31, 21, 0.2);
+    pointer-events: none;
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(11, 1fr);
+    grid-template-rows: repeat(11, 1fr);
+    aspect-ratio: 1;
+    gap: 2px;
+    position: relative;
+  }
+
+  .space {
+    background: var(--parchment);
+    border: 1px solid var(--ink-faded);
+    padding: 4px;
+    font-size: 9px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .space:hover {
+    background: #f0e4c8;
+    transform: scale(1.02);
+    z-index: 5;
+    box-shadow: 0 4px 12px var(--shadow);
+  }
+
+  .space.corner {
+    background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-family: 'IM Fell English SC', serif;
+  }
+
+  .space-name {
+    font-family: 'IM Fell English SC', serif;
+    text-transform: uppercase;
+    font-size: 9px;
+    line-height: 1.1;
+    color: var(--ink);
+    text-align: center;
+    margin-top: 2px;
+  }
+
+  .space-price {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    text-align: center;
+    color: var(--ink-faded);
+    margin-top: auto;
+  }
+
+  .color-bar {
+    height: 14px;
+    margin: -4px -4px 3px -4px;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .color-Brown     { background: #6b4423; }
+  .color-LightBlue { background: #87ceeb; }
+  .color-Pink      { background: #d47ba0; }
+  .color-Orange    { background: #d97a2e; }
+  .color-Red       { background: #8b1d1d; }
+  .color-Yellow    { background: #d4a93e; }
+  .color-Green     { background: #2d4a2b; }
+  .color-Blue      { background: #1e3a5f; }
+
+  .space-tokens {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+    max-width: 30px;
+  }
+
+  .player-token {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid var(--ink);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  .ownership-flag {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--ink);
+  }
+
+  .building-marker {
+    position: absolute;
+    bottom: 2px;
+    left: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    background: var(--ink);
+    color: var(--gold-bright);
+    padding: 1px 3px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  .corner-icon  { font-size: clamp(18px, 2.5vw, 32px); margin-bottom: 4px; color: var(--ink-faded); }
+  .corner-label { font-size: 9px; letter-spacing: 0.1em; }
+
+  /* === BOARD CENTER === */
+  .board-center {
+    grid-column: 2 / 11;
+    grid-row: 2 / 11;
+    background:
+      radial-gradient(ellipse at center, rgba(232, 220, 192, 0.6) 0%, rgba(184, 164, 122, 0.3) 100%),
+      repeating-linear-gradient(45deg, transparent 0 20px, rgba(42, 31, 21, 0.03) 20px 21px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+    border: 1px dashed var(--ink-faded);
+  }
+
+  .center-title  { font-family: 'IM Fell English SC', serif; font-size: clamp(20px, 3vw, 36px); color: var(--ink); letter-spacing: 0.15em; margin-bottom: 4px; }
+  .center-eagle  { font-size: clamp(40px, 7vw, 72px); color: var(--gold); margin: 8px 0; text-shadow: 0 4px 12px rgba(184, 144, 46, 0.4); }
+  .turn-indicator { font-style: italic; color: var(--ink-faded); font-size: clamp(11px, 1.2vw, 14px); margin-top: 8px; }
+
+  .dice-display { display: flex; gap: 12px; margin-top: 16px; justify-content: center; }
+
+  .die {
+    width: clamp(36px, 5vw, 56px);
+    height: clamp(36px, 5vw, 56px);
+    background: var(--parchment);
+    border: 2px solid var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'IM Fell English SC', serif;
+    font-size: clamp(20px, 3vw, 32px);
+    color: var(--crimson);
+    box-shadow: 0 4px 8px var(--shadow), inset 0 0 12px rgba(0,0,0,0.05);
+    border-radius: 6px;
+  }
+
+  .die.rolling {
+    animation: roll 0.6s ease-out;
+  }
+
+  @keyframes roll {
+    0%   { transform: rotate(0) scale(1); }
+    50%  { transform: rotate(180deg) scale(1.15); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+
+  .center-message {
+    margin-top: 16px;
+    padding: 12px 20px;
+    background: rgba(255, 248, 220, 0.7);
+    border: 1px solid var(--ink-faded);
+    font-style: italic;
+    color: var(--ink);
+    max-width: 90%;
+    font-size: clamp(12px, 1.3vw, 15px);
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* === SIDEBAR === */
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+  .panel {
+    background: linear-gradient(180deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 2px solid var(--ink-faded);
+    padding: 16px;
+    position: relative;
+    box-shadow: 0 8px 24px var(--shadow);
+  }
+
+  .panel-title {
+    font-family: 'IM Fell English SC', serif;
+    color: var(--ink);
+    font-size: 14px;
+    letter-spacing: 0.15em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ink-faded);
+    text-align: center;
+  }
+
+  /* === PLAYER CARDS === */
+  .player-card {
+    background: var(--parchment);
+    border: 1px solid var(--ink-faded);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    position: relative;
+    transition: all 0.3s;
+  }
+
+  .player-card.active {
+    border: 2px solid var(--gold);
+    background: linear-gradient(135deg, #f5e9c8 0%, var(--parchment) 100%);
+    box-shadow: 0 0 12px rgba(184, 144, 46, 0.4);
+  }
+
+  .player-card.collapsed {
+    opacity: 0.6;
+    background: repeating-linear-gradient(45deg, var(--parchment) 0 4px, var(--parchment-dark) 4px 5px);
+  }
+
+  .player-row   { display: flex; align-items: center; gap: 10px; }
+  .player-color { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ink); flex-shrink: 0; }
+  .player-name  { font-family: 'IM Fell English SC', serif; font-size: 13px; flex: 1; color: var(--ink); }
+  .player-money { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--crimson-dark); }
+
+  .player-stats {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--ink-faded);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .player-status { font-size: 10px; font-style: italic; color: var(--crimson); margin-top: 2px; }
+
+  /* === BUTTONS === */
+  .btn {
+    background: linear-gradient(180deg, var(--imperial-blue) 0%, var(--imperial-blue-dark) 100%);
+    color: var(--parchment);
+    border: 1px solid var(--ink);
+    padding: 10px 18px;
+    font-family: 'IM Fell English SC', serif;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    text-transform: uppercase;
+    box-shadow: 0 3px 0 var(--ink), 0 4px 10px var(--shadow);
+  }
+
+  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 var(--ink), 0 6px 14px var(--shadow); }
+  .btn:active:not(:disabled){ transform: translateY(2px);  box-shadow: 0 1px 0 var(--ink), 0 2px 4px var(--shadow); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn.crimson { background: linear-gradient(180deg, var(--crimson) 0%, var(--crimson-dark) 100%); }
+  .btn.gold    { background: linear-gradient(180deg, var(--gold-bright) 0%, var(--gold) 100%); color: var(--ink); }
+  .btn.ghost   { background: transparent; color: var(--ink); border: 1px solid var(--ink-faded); box-shadow: none; }
+  .btn.ghost:hover:not(:disabled) { background: rgba(42,31,21,0.08); transform: none; box-shadow: none; }
+
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* === LOG === */
+  .log {
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: 12px;
+    background: rgba(255, 248, 220, 0.5);
+    border: 1px solid var(--ink-faded);
+    padding: 10px;
+  }
+
+  .log::-webkit-scrollbar       { width: 6px; }
+  .log::-webkit-scrollbar-track { background: var(--parchment-dark); }
+  .log::-webkit-scrollbar-thumb { background: var(--ink-faded); }
+
+  .log-entry { padding: 4px 0; border-bottom: 1px dotted rgba(42,31,21,0.15); color: var(--ink); line-height: 1.4; }
+  .log-entry:last-child { border-bottom: none; }
+  .log-entry.major { color: var(--crimson-dark); font-weight: 600; }
+  .log-entry.gain  { color: var(--forest); }
+  .log-entry.loss  { color: var(--crimson); }
+
+  /* === MODAL === */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(13, 10, 7, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+    backdrop-filter: blur(4px);
+  }
+
+  .modal {
+    background: radial-gradient(ellipse at center, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 3px double var(--ink);
+    padding: 32px;
+    max-width: 500px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    position: relative;
+    text-align: center;
+  }
+
+  .modal::before { content: '✦'; position: absolute; color: var(--gold); font-size: 18px; top: 12px; left: 12px; }
+  .modal::after  { content: '✦'; position: absolute; color: var(--gold); font-size: 18px; top: 12px; right: 12px; }
+
+  .modal-title  { font-family: 'IM Fell English SC', serif; font-size: 22px; color: var(--ink); letter-spacing: 0.1em; margin-bottom: 8px; }
+  .modal-flavor { font-style: italic; color: var(--ink-faded); margin-bottom: 16px; font-size: 14px; }
+  .modal-body   { margin: 20px 0; font-size: 16px; color: var(--ink); line-height: 1.5; }
+
+  .modal-actions { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+  .modal-actions .btn { width: auto; min-width: 140px; }
+
+  .property-detail {
+    background: rgba(255, 248, 220, 0.6);
+    border: 1px solid var(--ink-faded);
+    padding: 14px;
+    margin: 16px 0;
+    text-align: left;
+    font-size: 13px;
+  }
+
+  .property-detail .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* === SETUP SCREEN === */
+  .setup {
+    background: linear-gradient(180deg, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 3px double var(--ink);
+    padding: 40px;
+    max-width: 600px;
+    margin: 60px auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    text-align: center;
+  }
+
+  .setup-title  { font-family: 'IM Fell English SC', serif; font-size: 36px; color: var(--ink); letter-spacing: 0.15em; margin-bottom: 4px; }
+  .setup-flavor { font-style: italic; color: var(--ink-faded); margin-bottom: 30px; }
+
+  .setup-section { margin: 20px 0; text-align: left; }
+  .setup-label   { font-family: 'IM Fell English SC', serif; font-size: 14px; letter-spacing: 0.1em; margin-bottom: 8px; color: var(--ink); }
+
+  .player-count-buttons { display: flex; gap: 8px; justify-content: center; }
+
+  .count-btn {
+    width: 50px; height: 50px;
+    background: var(--parchment);
+    border: 2px solid var(--ink);
+    font-family: 'IM Fell English SC', serif;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--ink);
+  }
+
+  .count-btn:hover    { background: #f0e4c8; }
+  .count-btn.selected { background: var(--ink); color: var(--gold-bright); }
+
+  .name-inputs       { display: flex; flex-direction: column; gap: 10px; }
+  .name-input-row    { display: flex; align-items: center; gap: 10px; }
+
+  .name-input-row input {
+    flex: 1;
+    padding: 10px 12px;
+    background: var(--parchment);
+    border: 1px solid var(--ink-faded);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 16px;
+    color: var(--ink);
+  }
+
+  .name-input-row input:focus { outline: none; border-color: var(--gold); background: #f5e9c8; }
+
+  /* === VICTORY === */
+  .victory-modal  { background: radial-gradient(ellipse at center, #f5e9c8 0%, var(--parchment-dark) 100%); }
+  .victory-title  { font-family: 'IM Fell English SC', serif; font-size: 32px; color: var(--crimson); letter-spacing: 0.15em; margin-bottom: 12px; }
+  .victory-eagle  { font-size: 64px; color: var(--gold); margin: 16px 0; }
+
+  .standings { text-align: left; margin: 20px 0; }
+
+  .standing-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px dotted var(--ink-faded);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  .standing-row:first-child {
+    background: rgba(184, 144, 46, 0.2);
+    font-weight: 600;
+    border-bottom: 2px solid var(--gold);
+  }
+
+  /* Selected space spotlight */
+  .space.selected { box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(184, 144, 46, 0.6); z-index: 4; }
+
+  .space-detail h4 { font-family: 'IM Fell English SC', serif; font-size: 14px; margin-bottom: 6px; color: var(--ink); }
+
+  .ownership-list { margin-top: 6px; font-size: 11px; color: var(--ink-faded); }
+
+  .group-properties { display: flex; gap: 4px; margin-top: 6px; }
+
+  .group-prop-pill {
+    flex: 1;
+    padding: 3px 4px;
+    border: 1px solid var(--ink-faded);
+    font-size: 9px;
+    text-align: center;
+    background: var(--parchment);
+  }
+
+  .group-prop-pill.owned { background: rgba(45, 74, 43, 0.2); }
+</style>
+</head>
+<body>
+
+<div id="app" class="app"></div>
+
+<script type="module" src="src/render.js"></script>
+</body>
+</html>
