@@ -4,6 +4,7 @@
 
 import { state, PLAYER_COLORS, currentPlayer } from './state.js';
 import { BOARD, spaceAt, playerAt, spaceGridPos } from './board.js';
+import { COMMANDERS } from './commanders.js';
 import {
   registerRenderer,
   getOwner,
@@ -65,12 +66,34 @@ export function render() {
 }
 
 // ---------------------------------------------------------------------------
-// Setup screen
+// Setup screen — two-step flow
+//   Step 'count'  → choose player count + names
+//   Step 'pick'   → each player selects a unique historical commander
 // ---------------------------------------------------------------------------
 
+const DEFAULT_NAMES = ['Napoleon', 'Wellington', 'Alexander I', 'Blücher', 'Metternich'];
+
+function getSetup() {
+  if (!window._setup) {
+    window._setup = {
+      step: 'count',
+      count: 2,
+      names: [...DEFAULT_NAMES],
+      commanders: [],     // commander ids indexed by player
+      currentPicker: 0,
+    };
+  }
+  return window._setup;
+}
+
 function renderSetup() {
-  const count = window._setupCount || 2;
-  const names = window._setupNames || ['Napoleon', 'Wellington', 'Alexander I', 'Metternich', 'Blücher'];
+  const s = getSetup();
+  if (s.step === 'count') return renderCountStep(s);
+  if (s.commanders.length < s.count) return renderPickStep(s);
+  return renderReadyStep(s);
+}
+
+function renderCountStep(s) {
   return `
     <div class="setup">
       <div class="setup-title">Empire &amp; Coalition</div>
@@ -80,7 +103,7 @@ function renderSetup() {
         <div class="setup-label">Number of Commanders</div>
         <div class="player-count-buttons">
           ${[2, 3, 4, 5].map(n =>
-            `<button class="count-btn ${count === n ? 'selected' : ''}" data-count="${n}">${n}</button>`
+            `<button class="count-btn ${s.count === n ? 'selected' : ''}" data-count="${n}">${n}</button>`
           ).join('')}
         </div>
       </div>
@@ -88,46 +111,151 @@ function renderSetup() {
       <div class="setup-section">
         <div class="setup-label">Commander Names</div>
         <div class="name-inputs">
-          ${Array.from({ length: count }, (_, i) => `
+          ${Array.from({ length: s.count }, (_, i) => `
             <div class="name-input-row">
               <div class="player-color" style="background:${PLAYER_COLORS[i].hex}"></div>
-              <input type="text" data-idx="${i}" value="${names[i] || ''}" placeholder="Commander ${i + 1}">
+              <input type="text" data-idx="${i}" value="${s.names[i] || ''}" placeholder="Commander ${i + 1}">
             </div>
           `).join('')}
         </div>
       </div>
 
+      <button class="btn gold" id="choose-commanders-btn" style="margin-top:24px">
+        Choose Commanders →
+      </button>
+    </div>
+  `;
+}
+
+function renderPickStep(s) {
+  const pickerIdx = s.commanders.length;
+  const pickerColor = PLAYER_COLORS[pickerIdx].hex;
+  const pickerName  = s.names[pickerIdx] || `Commander ${pickerIdx + 1}`;
+
+  return `
+    <div class="setup" style="max-width:680px">
+      <div class="setup-title">Choose Your Commander</div>
+
+      <div class="setup-picker-prompt">
+        <div class="player-color" style="background:${pickerColor};width:20px;height:20px;border-radius:50%;border:2px solid var(--ink);flex-shrink:0"></div>
+        <span><strong>${pickerName}</strong>, choose your commander</span>
+        <span class="setup-picker-idx">(${pickerIdx + 1} of ${s.count})</span>
+      </div>
+
+      <div class="cmd-grid">
+        ${COMMANDERS.map(cmd => {
+          const taken = s.commanders.includes(cmd.id);
+          return `
+            <div class="cmd-card ${taken ? 'taken' : ''}" data-cmd="${cmd.id}">
+              <div class="cmd-header">
+                <div class="cmd-monogram ${cmd.faction}">${cmd.monogram}</div>
+                <div>
+                  <div class="cmd-name">${cmd.name}</div>
+                  <div class="cmd-title">${cmd.title}</div>
+                </div>
+              </div>
+              <div class="cmd-ability-name">${cmd.abilityName}</div>
+              <div class="cmd-ability-text">${cmd.abilityText}</div>
+              ${taken ? '<div class="cmd-taken-label">Selected</div>' : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <button class="btn ghost" id="back-to-count-btn" style="margin-top:12px;width:auto;padding:8px 20px">
+        ← Back
+      </button>
+    </div>
+  `;
+}
+
+function renderReadyStep(s) {
+  return `
+    <div class="setup">
+      <div class="setup-title">The Campaign Awaits</div>
+      <div class="setup-flavor">The commanders are chosen. History hangs in the balance.</div>
+
+      <div class="setup-section">
+        ${Array.from({ length: s.count }, (_, i) => {
+          const cmd = COMMANDERS.find(c => c.id === s.commanders[i]);
+          return `
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px dotted var(--ink-faded)">
+              <div class="player-color" style="background:${PLAYER_COLORS[i].hex};width:18px;height:18px;border-radius:50%;border:2px solid var(--ink);flex-shrink:0"></div>
+              <div style="flex:1">
+                <span style="font-family:'IM Fell English SC',serif">${s.names[i] || `Commander ${i + 1}`}</span>
+              </div>
+              <div class="cmd-monogram ${cmd.faction}" style="width:28px;height:28px;font-size:13px">${cmd.monogram}</div>
+              <div style="flex:2;font-size:12px">
+                <div style="color:var(--ink)">${cmd.name}</div>
+                <div style="color:var(--crimson-dark);font-family:'JetBrains Mono',monospace;font-size:10px">${cmd.abilityName}</div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
       <button class="btn gold" id="start-btn" style="margin-top:24px">Begin Campaign</button>
+      <button class="btn ghost" id="back-to-count-btn" style="margin-top:8px;width:auto;padding:8px 20px">
+        ← Change Commanders
+      </button>
     </div>
   `;
 }
 
 function attachSetupHandlers() {
+  const s = getSetup();
+
+  // ── Count step ──────────────────────────────────────────
   document.querySelectorAll('.count-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const names = window._setupNames || ['Napoleon', 'Wellington', 'Alexander I', 'Metternich', 'Blücher'];
       document.querySelectorAll('.name-input-row input').forEach(inp => {
-        names[+inp.dataset.idx] = inp.value;
+        s.names[+inp.dataset.idx] = inp.value;
       });
-      window._setupNames = names;
-      window._setupCount = +btn.dataset.count;
+      s.count = +btn.dataset.count;
+      s.commanders = [];
+      s.currentPicker = 0;
       render();
     });
   });
 
   document.querySelectorAll('.name-input-row input').forEach(inp => {
     inp.addEventListener('input', e => {
-      const names = window._setupNames || ['Napoleon', 'Wellington', 'Alexander I', 'Metternich', 'Blücher'];
-      names[+inp.dataset.idx] = e.target.value;
-      window._setupNames = names;
+      s.names[+inp.dataset.idx] = e.target.value;
     });
   });
 
-  document.getElementById('start-btn').addEventListener('click', () => {
-    const count = window._setupCount || 2;
-    const names = (window._setupNames || []).slice(0, count).map((n, i) => n || `Commander ${i + 1}`);
-    while (names.length < count) names.push(`Commander ${names.length + 1}`);
-    startGame(names);
+  document.getElementById('choose-commanders-btn')?.addEventListener('click', () => {
+    document.querySelectorAll('.name-input-row input').forEach(inp => {
+      s.names[+inp.dataset.idx] = inp.value;
+    });
+    s.step = 'pick';
+    s.commanders = [];
+    render();
+  });
+
+  // ── Pick step ───────────────────────────────────────────
+  document.querySelectorAll('.cmd-card:not(.taken)').forEach(card => {
+    card.addEventListener('click', () => {
+      s.commanders.push(card.dataset.cmd);
+      render();
+    });
+  });
+
+  // ── Back button (pick and ready steps) ──────────────────
+  document.getElementById('back-to-count-btn')?.addEventListener('click', () => {
+    s.step = 'count';
+    s.commanders = [];
+    render();
+  });
+
+  // ── Ready step ──────────────────────────────────────────
+  document.getElementById('start-btn')?.addEventListener('click', () => {
+    const playerSetups = Array.from({ length: s.count }, (_, i) => ({
+      name: s.names[i] || `Commander ${i + 1}`,
+      commander: COMMANDERS.find(c => c.id === s.commanders[i]),
+    }));
+    window._setup = null; // reset for next game
+    startGame(playerSetups);
   });
 }
 
@@ -276,6 +404,23 @@ function renderPlayers() {
       ${state.players.map((p, i) => {
         const buildings = countBuildings(p);
         const properties = Object.values(state.ownership).filter(id => id === p.id).length;
+        const cmd = p.commander;
+        const isExpanded = state.expandedPlayer === p.id;
+
+        const commanderLine = cmd ? `
+          <div class="player-commander-line" data-expand-player="${p.id}">
+            <div class="cmd-monogram ${cmd.faction}" style="width:18px;height:18px;font-size:9px;display:inline-flex;vertical-align:middle;margin-right:5px">${cmd.monogram}</div>
+            ${cmd.name} · ${cmd.abilityName} ${isExpanded ? '▲' : '▼'}
+          </div>
+        ` : '';
+
+        const expandedBlock = (cmd && isExpanded) ? `
+          <div class="commander-expanded">
+            <div class="commander-bio">"${cmd.bio}"</div>
+            <div class="commander-ability-full"><strong>${cmd.abilityName}:</strong> ${cmd.abilityText}</div>
+          </div>
+        ` : '';
+
         return `
           <div class="player-card ${i === state.current ? 'active' : ''} ${p.collapsed ? 'collapsed' : ''}">
             <div class="player-row">
@@ -288,6 +433,8 @@ function renderPlayers() {
               <span>⚔ ${buildings.regiments}R ${buildings.armyCorps}★</span>
               <span>💰 ${netWorth(p)}</span>
             </div>
+            ${commanderLine}
+            ${expandedBlock}
             ${p.inExile ? '<div class="player-status">⚓ Exiled on Elba</div>' : ''}
             ${p.collapsed && !p.inExile ? '<div class="player-status">⚠ Collapse State</div>' : ''}
             ${p.outOfExileCard ? '<div class="player-status">🕊 Holds Pardon Card</div>' : ''}
@@ -520,6 +667,14 @@ function attachGameHandlers() {
     sp.addEventListener('click', () => {
       const idx = +sp.dataset.idx;
       state.selectedSpace = state.selectedSpace === idx ? null : idx;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-expand-player]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = +el.dataset.expandPlayer;
+      state.expandedPlayer = state.expandedPlayer === id ? null : id;
       render();
     });
   });
