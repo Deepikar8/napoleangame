@@ -217,8 +217,8 @@ export function speak(text, opts = {}) {
   if (!window.speechSynthesis) return;
   if (opts.interrupt) window.speechSynthesis.cancel();
   const utt    = new SpeechSynthesisUtterance(text);
-  utt.rate     = opts.rate   ?? 0.88;
-  utt.pitch    = opts.pitch  ?? 0.95;
+  utt.rate     = opts.rate   ?? 0.82;
+  utt.pitch    = opts.pitch  ?? 0.88;
   utt.volume   = opts.volume ?? 0.85;
   const voice  = getVoice();
   if (voice) utt.voice = voice;

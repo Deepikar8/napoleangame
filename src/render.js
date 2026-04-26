@@ -66,60 +66,68 @@ function setTurnSummaryEnabled(val) {
 // ---------------------------------------------------------------------------
 const _spokenEvents = new WeakSet();
 
+// Number words for dice totals — spoken narration sounds better than digits
+const DICE_WORDS = ['', 'one', 'two', 'three', 'four', 'five', 'six',
+                    'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+
 function speakEvent(e) {
   switch (e.type) {
     case 'turn_started':
       cancelSpeech();
-      speak(`${e.playerName}'s turn.`, { interrupt: true });
+      speak(`The campaign awaits, ${e.playerName}.`, { interrupt: true });
       break;
     case 'player_eliminated':
-      speak(`${e.playerName} is eliminated.`, { pitch: 0.8, rate: 0.85 });
+      speak(`${e.playerName}'s armies are broken. They are driven from the field.`, { pitch: 0.75, rate: 0.78 });
       break;
     case 'roll':
-      if (e.isDoubles) speak(`Doubles! ${e.dice[0]} and ${e.dice[1]}.`);
-      else speak(`${e.dice[0] + e.dice[1]}.`);
+      if (e.isDoubles) {
+        speak(`Doubles! ${DICE_WORDS[e.dice[0]]} and ${DICE_WORDS[e.dice[1]]}. March again, Commander.`);
+      } else {
+        const total = e.dice[0] + e.dice[1];
+        speak(`The dice fall... ${DICE_WORDS[total] ?? total}.`);
+      }
       break;
     case 'move':
       speak(e.spaceName ?? '');
       break;
     case 'pass_mobilization':
-      speak('Mobilization! Collect two hundred.');
+      speak('The troops are mobilized. Two hundred francs flow into the treasury.');
       playPassMobilization();
       break;
     case 'rent_paid':
-      speak(`Rent. ${e.amount} francs.`);
+      speak(`Tribute paid. ${e.amount} francs rendered to the occupying power.`);
       playRentPaid();
       break;
     case 'tax_paid':
-      speak(`Tax levy. ${e.amount} francs.`);
+      speak(`The crown demands its toll. ${e.amount} francs seized.`);
       break;
     case 'purchase':
-      speak(`${e.spaceName}, acquired.`);
+      speak(`${e.spaceName} falls under your banner. The conquest is complete.`);
       playPurchase();
       break;
     case 'card_drawn':
-      speak(e.cardText ?? 'Orders received.');
+      speak(e.cardText ?? 'New orders arrive from the Emperor.');
       playCardDraw();
       break;
     case 'sent_to_exile':
-      speak(`${currentPlayer().name}... exiled to Elba!`, { pitch: 0.75, rate: 0.8 });
+      speak(`The empire crumbles. ${currentPlayer().name}... is exiled to Elba.`, { pitch: 0.72, rate: 0.76 });
       playExile();
       break;
     case 'escaped_exile':
-      speak('Escaped!');
+      speak('The eagle has escaped! The hundred days begin.');
       break;
     case 'turn_skipped':
-      speak(`${currentPlayer().name} winters in camp.`);
+      speak(`${currentPlayer().name} retreats to winter quarters. The campaign pauses.`);
       break;
     case 'auction_started':
-      speak(`Auction! ${e.spaceName}. Opening bid, ${e.minBid} francs.`);
+      speak(`${e.spaceName} goes to open auction. The minimum bid stands at ${e.minBid} francs.`);
       break;
     case 'auction_won':
-      speak(`${e.winnerName} wins ${e.spaceName} at ${e.price} francs!`);
+      speak(`${e.winnerName} secures ${e.spaceName} for ${e.price} francs. A bold investment.`);
       playPurchase();
       break;
     case 'auction_ended':
-      speak('No bids. The territory remains uncontested.');
+      speak(`No commander dares bid. ${e.spaceName ?? 'The territory'} remains unclaimed.`);
       break;
   }
 }
@@ -192,7 +200,7 @@ export function render() {
     document.body.insertAdjacentHTML('beforeend', renderVictory());
     attachVictoryHandlers();
     playVictory();
-    if (state.winner) speak(`${state.winner.name} wins the campaign!`, { rate: 0.8, pitch: 1.1 });
+    if (state.winner) speak(`Europe bows. ${state.winner.name} stands alone, the master of nations. The campaign is won.`, { rate: 0.76, pitch: 0.85 });
   }
   if (state.pendingTurnSummary) {
     if (getTurnSummaryEnabled()) {
