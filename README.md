@@ -64,6 +64,8 @@ every evergreen browser supports.
 
 ### Board & Visuals
 - **Napoleonic parchment theme** — aged paper background, ink typography, gold accents throughout
+- **SVG paper grain** — `feTurbulence` filter applied to the board for a subtle aged-parchment texture
+- **Per-territory flavor text** — all 22 territories have historical flavor lines shown in purchase and auction modals
 - **Special space highlights** — battle territories (gold border + ★ watermark), Paris capital (blue border + ♛), Mobilization corner (gold glow), Go-to-Exile corner (dark crimson)
 - **Owner tinting** — each claimed space washes with its owner's color at low opacity, readable at a glance
 - **Triangle ownership flag** — clipped corner triangle shows owner color on each property
@@ -76,8 +78,10 @@ every evergreen browser supports.
 - **Anti-repeat bias** — `rollDie(lastValue)` re-rolls once if the same face would repeat back-to-back, reducing identical repeats from 1/6 to ~1/36
 
 ### Token movement
-- Tokens hop **one space at a time** at 160 ms intervals — rolling a 7 takes ~1.1 s, a 12 takes ~1.9 s
+- Tokens live in a **CSS overlay layer** and move via `left`/`top` transitions — no board DOM rebuild on each step
+- Tokens hop **one space at a time** at 160 ms intervals with a 140 ms CSS ease-out transition
 - Passing Mobilization mid-move triggers the collect-200 bonus at the correct step
+- Multiple players sharing a space are fanned horizontally with a 7 px offset
 
 ### Sound Effects (Web Audio API — no files)
 | Event | Sound |
@@ -88,7 +92,7 @@ every evergreen browser supports.
 | Token step | Wooden tap |
 | Token lands | Heavy thud |
 | Pass Mobilization | Upward 4-note arpeggio |
-| Purchase territory | Descending coin cascade |
+| Purchase / auction win | Descending coin cascade |
 | Pay rent | Outgoing coins |
 | Draw card | Paper whoosh |
 | Exiled to Elba | Descending sawtooth drone |
@@ -101,6 +105,26 @@ The game announces key events aloud in a low, authoritative voice:
 - Space name on landing
 - "Mobilization! Collect two hundred."
 - Rent, tax, purchase, exile, escape, skip, and victory lines
+- Auction events — opening bid, winner, and no-bids result
+
+### Auction
+When a player declines to purchase a property, an **open auction** is held
+for all other active players in turn order:
+- Bid presets: ½ price, ¾ price, full price, current high +10₣
+- All-pass → property stays unowned
+- Winner acquires at their bid; `moveTo` cards still advance turn correctly
+
+### Elimination
+When a player cannot cover a debt and has no assets left to liquidate they are
+**eliminated** from the campaign:
+- Buildings sold first, then cheapest properties, to cover the debt
+- Eliminated players are skipped in turn rotation
+- If only one commander remains, they win immediately
+
+### Auto-Save / Resume
+The game silently saves to `localStorage` after every turn and property purchase.
+On the setup screen a **Resume Campaign** button appears if a save exists, showing
+the current round and active player count. Starting a new campaign clears the save.
 
 ### Turn Summary
 After every non-trivial turn a modal lists all turn events with treasury delta.
@@ -320,7 +344,7 @@ Wellington lands on a Davout-owned territory: base × 1.25 × 0.75.
 
 ### Testing
 
-168 tests across 5 suites. Run with:
+176 tests across 5 suites. Run with:
 
 ```bash
 npm run test:run
