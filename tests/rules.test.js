@@ -19,7 +19,14 @@ import {
   payRent,
   updateCollapseStatus,
   checkRecovery,
+  eliminatePlayer,
+  registerRenderer,
+  registerDiceAnimator,
+  endTurn,
 } from '../src/rules.js';
+
+registerRenderer(() => {});
+registerDiceAnimator((_v, cb) => cb());
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -523,5 +530,106 @@ describe('payRent — forced liquidation', () => {
     payRent(payer, receiver, 70);
     expect(state.ownership[TOULON.i]).toBeUndefined(); // Toulon sold
     expect(state.ownership[PARIS.i]).toBe(0);          // Paris kept
+  });
+});
+
+// ---------------------------------------------------------------------------
+// eliminatePlayer
+// ---------------------------------------------------------------------------
+
+describe('eliminatePlayer', () => {
+  function makeTwo() {
+    const p0 = makePlayer({ id: 0, money: 0 });
+    const p1 = makePlayer({ id: 1, money: 500 });
+    resetState([p0, p1]);
+    return { p0, p1 };
+  }
+
+  it('sets eliminated=true', () => {
+    const { p0 } = makeTwo();
+    eliminatePlayer(p0);
+    expect(p0.eliminated).toBe(true);
+  });
+
+  it('removes all properties owned by the eliminated player', () => {
+    const { p0 } = makeTwo();
+    state.ownership[TOULON.i]  = 0;
+    state.ownership[MARENGO.i] = 0;
+    state.ownership[PARIS.i]   = 1; // belongs to p1 — should NOT be removed
+    eliminatePlayer(p0);
+    expect(state.ownership[TOULON.i]).toBeUndefined();
+    expect(state.ownership[MARENGO.i]).toBeUndefined();
+    expect(state.ownership[PARIS.i]).toBe(1); // untouched
+  });
+
+  it('removes all buildings on eliminated player properties', () => {
+    const { p0 } = makeTwo();
+    state.ownership[TOULON.i] = 0;
+    state.buildings[TOULON.i] = 3;
+    eliminatePlayer(p0);
+    expect(state.buildings[TOULON.i]).toBeUndefined();
+  });
+
+  it('emits player_eliminated event', () => {
+    const { p0 } = makeTwo();
+    eliminatePlayer(p0);
+    const ev = state.gameEvents.find(e => e.type === 'player_eliminated');
+    expect(ev).toBeTruthy();
+    expect(ev.playerId).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// payRent — elimination trigger
+// ---------------------------------------------------------------------------
+
+describe('payRent — elimination on total bankruptcy', () => {
+  it('eliminates payer when stripped of all money and has no assets', () => {
+    const payer    = makePlayer({ id: 0, money: 50 });
+    const receiver = makePlayer({ id: 1, money: 500 });
+    resetState([payer, receiver]);
+    // No properties — full 50₣ taken, player ends at 0 with no assets
+    payRent(payer, receiver, 200);
+    expect(payer.eliminated).toBe(true);
+  });
+
+  it('does NOT eliminate payer who still has properties after liquidation', () => {
+    const payer    = makePlayer({ id: 0, money: 50 });
+    const receiver = makePlayer({ id: 1, money: 500 });
+    resetState([payer, receiver]);
+    // Give payer Paris (400, mortgage 200) — liquidation covers the rent
+    state.ownership[PARIS.i] = 0;
+    payRent(payer, receiver, 70); // 50 + 200 proceeds > 70 → survives
+    expect(payer.eliminated).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// endTurn — skip eliminated players
+// ---------------------------------------------------------------------------
+
+describe('endTurn — eliminated player skipping', () => {
+  it('skips eliminated players in turn rotation', () => {
+    const p0 = makePlayer({ id: 0, money: 1500 });
+    const p1 = makePlayer({ id: 1, money: 1500, eliminated: true });
+    const p2 = makePlayer({ id: 2, money: 1500 });
+    resetState([p0, p1, p2]);
+    state.rolledThisTurn = true;
+    state.lastRoll = [3, 4];
+    endTurn();
+    // p1 is eliminated — should skip to p2 (index 2)
+    expect(state.current).toBe(2);
+  });
+
+  it('triggers last-standing victory when all but one are eliminated', () => {
+    const p0 = makePlayer({ id: 0, money: 1500 });
+    const p1 = makePlayer({ id: 1, money: 0, eliminated: true });
+    resetState([p0, p1]);
+    state.rolledThisTurn = true;
+    state.lastRoll = [3, 4];
+    endTurn();
+    expect(state.phase).toBe('gameOver');
+    expect(state.winner.id).toBe(0);
+    expect(state.winReason).toBe('Last Commander Standing');
   });
 });

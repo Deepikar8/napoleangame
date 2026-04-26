@@ -68,7 +68,10 @@ function speakEvent(e) {
   switch (e.type) {
     case 'turn_started':
       cancelSpeech();
-      speak(`${e.playerName ?? currentPlayer().name}'s turn.`, { interrupt: true });
+      speak(`${e.playerName}'s turn.`, { interrupt: true });
+      break;
+    case 'player_eliminated':
+      speak(`${e.playerName} is eliminated.`, { pitch: 0.8, rate: 0.85 });
       break;
     case 'roll':
       if (e.isDoubles) speak(`Doubles! ${e.dice[0]} and ${e.dice[1]}.`);

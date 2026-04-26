@@ -285,6 +285,7 @@ export function startGame(playerSetups) {
     exileTurns: 0,
     skipNext: false,
     collapsed: false,
+    eliminated: false,
     outOfExileCard: false,
     commander,   // full commander object — keeps lookups simple
   }));
@@ -311,7 +312,7 @@ export function startGame(playerSetups) {
   state.lastDiceRolled = [0, 0];
   state.pendingTurnSummary = null;
   log(`Campaign begins. ${state.players.length} commanders march to glory.`, 'major');
-  emit({ type: 'turn_started', isExileTurn: false });
+  emit({ type: 'turn_started', playerId: state.players[0].id, playerName: state.players[0].name, isExileTurn: false });
   _render();
 }
 
@@ -320,8 +321,26 @@ export function startGame(playerSetups) {
 // ---------------------------------------------------------------------------
 
 export function payMoney(p, amount) {
-  p.money -= amount;
+  // Try to raise funds via liquidation before the debit
+  if (p.money < amount) forcedLiquidate(p, amount);
+  p.money -= amount; // may still go negative if liquidation didn't fully cover
   updateCollapseStatus(p);
+  // Elimination only triggered by payRent (can't-pay-opponent scenario)
+}
+
+/**
+ * Eliminate a player: mark them out, return all their property to the bank.
+ */
+export function eliminatePlayer(p) {
+  p.eliminated = true;
+  for (const idx of Object.keys(state.ownership)) {
+    if (state.ownership[idx] === p.id) {
+      delete state.ownership[idx];
+      delete state.buildings[idx];
+    }
+  }
+  emit({ type: 'player_eliminated', playerId: p.id, playerName: p.name });
+  log(`${p.name} is eliminated from the campaign.`, 'loss');
 }
 
 /**
@@ -329,7 +348,7 @@ export function payMoney(p, amount) {
  * then sell cheapest properties first (50% of price), until the player can cover
  * `targetAmount` or runs out of assets entirely.
  */
-function forcedLiquidate(player, targetAmount) {
+export function forcedLiquidate(player, targetAmount) {
   // 1. Sell all buildings on owned properties
   for (const idx of Object.keys(state.buildings)) {
     if (state.ownership[idx] !== player.id) continue;
@@ -370,6 +389,9 @@ export function payRent(payer, receiver, amount) {
   }
   updateCollapseStatus(payer);
   checkRecovery(receiver);
+  // Eliminate if bankrupt with no assets remaining
+  const hasAssets = Object.values(state.ownership).some(id => id === payer.id);
+  if (payer.money <= 0 && !hasAssets && !payer.eliminated) eliminatePlayer(payer);
 }
 
 // ---------------------------------------------------------------------------
@@ -583,15 +605,10 @@ export function applyCard(card) {
 
     case 'moveTo': {
       const target = card.target;
-      if (card.collect && target < p.position) {
-        p.money += 200;
-        log(`${p.name} passes Mobilization → +200₣.`, 'gain');
-        emit({ type: 'pass_mobilization', amount: 200 });
-        emit({ type: 'gain', amount: 200, source: 'mobilization' });
-      }
-      p.position = target;
-      _render();
-      setTimeout(() => resolveSpace(), 700);
+      const from   = p.position;
+      // Always move forward; wrapping naturally triggers mobilization in movePlayer
+      const steps  = target >= from ? target - from : (40 - from) + target;
+      movePlayer(p, steps);
       break;
     }
 
@@ -638,6 +655,7 @@ export function applyCard(card) {
       for (const other of state.players) {
         if (other.id !== p.id && !other.eliminated) {
           other.money += card.amount;
+          checkRecovery(other);
           total += card.amount;
         }
       }
@@ -907,13 +925,31 @@ export function endTurn() {
   state.current = (state.current + 1) % state.players.length;
   state.holdingsExpanded = {};
 
+  // Skip eliminated players
+  let skipGuard = 0;
+  while (state.players[state.current]?.eliminated && skipGuard++ < state.players.length) {
+    state.current = (state.current + 1) % state.players.length;
+  }
+
+  // Last commander standing
+  const activePlayers = state.players.filter(pl => !pl.eliminated);
+  if (activePlayers.length === 1) {
+    state.winner    = activePlayers[0];
+    state.winReason = 'Last Commander Standing';
+    state.phase     = 'gameOver';
+    emit({ type: 'game_won', winnerId: state.winner.id, winnerName: state.winner.name, winType: 'last_standing', round: state.round, playerId: state.winner.id });
+    _render();
+    return;
+  }
+
   if (state.current === 0) {
     state.round++;
     log(`──── Round ${state.round} ────`, 'major');
     emit({ type: 'round_started', round: state.round });
   }
 
-  emit({ type: 'turn_started', isExileTurn: state.players[state.current]?.inExile ?? false });
+  const next = state.players[state.current];
+  emit({ type: 'turn_started', playerId: next.id, playerName: next.name, isExileTurn: next.inExile ?? false });
 
   if (checkVictory()) { _render(); return; } // game over — skip summary
 
