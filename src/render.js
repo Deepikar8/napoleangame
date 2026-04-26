@@ -132,6 +132,39 @@ function attachSetupHandlers() {
 }
 
 // ---------------------------------------------------------------------------
+// Board helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Render player tokens on a space.
+ * ≤ 2 players → individual colored dots.
+ * 3+ players  → first 2 dots + a "+N" overflow badge so nothing spills out.
+ */
+function renderTokens(players) {
+  if (players.length === 0) return '';
+  const visible = players.slice(0, 2);
+  const overflow = players.length - visible.length;
+  const dots = visible.map(p =>
+    `<div class="player-token" style="background:${p.color}" title="${p.name}"></div>`
+  ).join('');
+  const badge = overflow > 0
+    ? `<div class="token-overflow">+${overflow}</div>`
+    : '';
+  return `<div class="space-tokens">${dots}${badge}</div>`;
+}
+
+/**
+ * Render building level as gold pip squares (1–4) or a ★ (5 = Army Corps).
+ * Reads instantly at small sizes — no text decoding required.
+ */
+function renderBuildingMarker(level) {
+  if (level === 0) return '';
+  if (level === 5) return `<div class="building-corps">★</div>`;
+  const pips = Array(level).fill('<span class="building-pip"></span>').join('');
+  return `<div class="building-pips">${pips}</div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
 
@@ -181,17 +214,13 @@ function renderBoard() {
       `;
     }
 
-    const tokens = players.map(p =>
-      `<div class="player-token" style="background:${p.color}" title="${p.name}"></div>`
-    ).join('');
+    const tokens = renderTokens(players);
 
     const ownershipFlag = owner
       ? `<div class="ownership-flag" style="background:${owner.color}"></div>`
       : '';
 
-    const buildingMarker = buildings > 0
-      ? `<div class="building-marker">${buildings === 5 ? '★' : buildings + 'R'}</div>`
-      : '';
+    const buildingMarker = renderBuildingMarker(buildings);
 
     return `
       <div class="space ${sp.type === 'corner' ? 'corner' : ''} ${isSelected ? 'selected' : ''}"

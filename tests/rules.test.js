@@ -16,6 +16,7 @@ import {
   ownsGroup,
   netWorth,
   payMoney,
+  payRent,
   updateCollapseStatus,
   checkRecovery,
 } from '../src/rules.js';
@@ -457,5 +458,65 @@ describe('netWorth', () => {
     state.ownership[TOULON.i] = 0;  // price 60
     state.buildings[TOULON.i] = 2;  // 2 × buildCost 50 = 100
     expect(netWorth(player)).toBe(1160);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Forced liquidation via payRent
+// ---------------------------------------------------------------------------
+
+describe('payRent — forced liquidation', () => {
+  let payer, receiver;
+
+  beforeEach(() => {
+    payer    = makePlayer({ id: 0, money: 50 });
+    receiver = makePlayer({ id: 1, money: 0 });
+    resetState([payer, receiver]);
+  });
+
+  it('pays rent normally when payer has enough cash', () => {
+    payRent(payer, receiver, 30);
+    expect(payer.money).toBe(20);
+    expect(receiver.money).toBe(30);
+  });
+
+  it('liquidates buildings to cover a shortfall', () => {
+    // Payer owns Toulon with 2 regiments; buildings worth 2 × 50 × 0.5 = 50
+    state.ownership[TOULON.i]  = 0;
+    state.ownership[MARENGO.i] = 0;
+    state.buildings[TOULON.i]  = 2;
+    // payer.money=50, gets +50 from buildings = 100; rent due=80
+    payRent(payer, receiver, 80);
+    expect(receiver.money).toBe(80);
+    expect(payer.money).toBe(20);          // 50 + 50 proceeds − 80
+    expect(state.buildings[TOULON.i]).toBeUndefined(); // sold
+  });
+
+  it('liquidates a property when buildings are not enough', () => {
+    // Payer owns only Toulon (price 60, mortgage value 30); no buildings
+    state.ownership[TOULON.i] = 0;
+    // payer.money=50, gets +30 from Toulon = 80; rent due=70
+    payRent(payer, receiver, 70);
+    expect(receiver.money).toBe(70);
+    expect(payer.money).toBe(10);          // 50 + 30 − 70
+    expect(state.ownership[TOULON.i]).toBeUndefined(); // mortgaged
+  });
+
+  it('pays what it can when fully stripped', () => {
+    // payer has 50₣ cash and no assets; rent = 200
+    payRent(payer, receiver, 200);
+    expect(receiver.money).toBe(50);       // only what payer had
+    expect(payer.money).toBe(0);
+    expect(payer.collapsed).toBe(true);
+  });
+
+  it('sells cheapest property first', () => {
+    // Give payer Toulon (60) and Paris (400)
+    state.ownership[TOULON.i] = 0;
+    state.ownership[PARIS.i]  = 0;
+    // payer=50; Toulon mortgage=30 → 80 total; rent due=70 → sells Toulon only
+    payRent(payer, receiver, 70);
+    expect(state.ownership[TOULON.i]).toBeUndefined(); // Toulon sold
+    expect(state.ownership[PARIS.i]).toBe(0);          // Paris kept
   });
 });

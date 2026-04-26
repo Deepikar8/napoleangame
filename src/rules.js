@@ -248,9 +248,50 @@ export function payMoney(p, amount) {
   updateCollapseStatus(p);
 }
 
+/**
+ * Sell buildings first (all levels at once per property, 50% of buildCost × level),
+ * then sell cheapest properties first (50% of price), until the player can cover
+ * `targetAmount` or runs out of assets entirely.
+ */
+function forcedLiquidate(player, targetAmount) {
+  // 1. Sell all buildings on owned properties
+  for (const idx of Object.keys(state.buildings)) {
+    if (state.ownership[idx] !== player.id) continue;
+    const sp = BOARD[+idx];
+    const lvl = state.buildings[idx];
+    const proceeds = Math.floor(sp.buildCost * lvl * 0.5);
+    player.money += proceeds;
+    delete state.buildings[idx];
+    log(`${player.name} liquidates buildings at ${sp.name} for ${proceeds}₣.`, 'loss');
+    if (player.money >= targetAmount) return;
+  }
+
+  // 2. Sell properties cheapest-first
+  const owned = Object.keys(state.ownership)
+    .filter(idx => state.ownership[idx] === player.id)
+    .map(idx => ({ idx, sp: BOARD[+idx] }))
+    .sort((a, b) => (a.sp.price ?? 0) - (b.sp.price ?? 0));
+
+  for (const { idx, sp } of owned) {
+    const proceeds = Math.floor((sp.price ?? 0) * 0.5);
+    player.money += proceeds;
+    delete state.ownership[idx];
+    log(`${player.name} mortgages ${sp.name} for ${proceeds}₣.`, 'loss');
+    if (player.money >= targetAmount) return;
+  }
+}
+
 export function payRent(payer, receiver, amount) {
-  payer.money -= amount;
-  receiver.money += amount;
+  if (payer.money < amount) {
+    log(`${payer.name} cannot cover ${amount}₣ rent — forced liquidation!`, 'loss');
+    forcedLiquidate(payer, amount);
+  }
+  const actualPay = Math.max(0, Math.min(payer.money, amount));
+  payer.money -= actualPay;
+  receiver.money += actualPay;
+  if (actualPay < amount) {
+    log(`${payer.name} paid only ${actualPay}₣ of ${amount}₣ — stripped bare.`, 'loss');
+  }
   updateCollapseStatus(payer);
   checkRecovery(receiver);
 }
