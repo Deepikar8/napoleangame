@@ -251,6 +251,12 @@ function renderCountStep(s) {
     <div class="setup">
       <div class="setup-title">Empire &amp; Coalition</div>
       <div class="setup-flavor">Europe lies before you. How many shall contest it?</div>
+      <div style="text-align:center;margin-bottom:8px">
+        <a href="rules.html" target="_blank"
+           style="font-family:'IM Fell English SC',serif;font-size:13px;color:var(--gold);text-decoration:none;letter-spacing:0.06em;opacity:0.85">
+          📜 Read the Rules of Engagement
+        </a>
+      </div>
 
       <div class="setup-section">
         <div class="setup-label">Number of Commanders</div>
@@ -1416,6 +1422,12 @@ function renderSettings() {
         <input type="checkbox" id="speech-toggle" ${getSpeechEnabled() ? 'checked' : ''}>
         <span>Narration</span>
       </label>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dotted var(--ink-faded);text-align:center">
+        <a href="rules.html" target="_blank"
+           style="font-family:'IM Fell English SC',serif;font-size:12px;color:var(--gold);text-decoration:none;letter-spacing:0.06em">
+          📜 Rules of Engagement
+        </a>
+      </div>
     </div>
   `;
 }

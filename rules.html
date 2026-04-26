@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Empire &amp; Coalition — Rules of Engagement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IM+Fell+English+SC&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --parchment:       #e8dcc0;
+    --parchment-dark:  #d4c4a0;
+    --parchment-shadow:#b8a47a;
+    --ink:             #2a1f15;
+    --ink-faded:       #5a4a35;
+    --gold:            #b8902e;
+    --gold-bright:     #d4a93e;
+    --crimson:         #8b1d1d;
+    --imperial-blue:   #1e3a5f;
+    --shadow:          rgba(42, 31, 21, 0.35);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Cormorant Garamond', serif;
+    background: radial-gradient(ellipse at top left,  rgba(184,144,46,0.15), transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(139,29,29,0.12), transparent 50%),
+                #1a1208;
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 40px 20px 80px;
+  }
+
+  .page {
+    max-width: 820px;
+    margin: 0 auto;
+    background: radial-gradient(ellipse at center, var(--parchment) 0%, var(--parchment-dark) 100%);
+    border: 3px double var(--ink-faded);
+    padding: 56px 64px;
+    box-shadow: 0 24px 80px var(--shadow);
+    position: relative;
+    filter: url('#paper-texture');
+  }
+
+  .page::before, .page::after {
+    content: '✦';
+    position: absolute;
+    color: var(--gold);
+    font-size: 22px;
+    top: 20px;
+  }
+  .page::before { left: 24px; }
+  .page::after  { right: 24px; }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .masthead {
+    text-align: center;
+    border-bottom: 2px solid var(--ink-faded);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+  }
+
+  .masthead-eagle {
+    font-size: 52px;
+    line-height: 1;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 2px 8px rgba(184,144,46,0.5));
+  }
+
+  h1 {
+    font-family: 'IM Fell English SC', serif;
+    font-size: clamp(28px, 5vw, 44px);
+    color: var(--ink);
+    letter-spacing: 0.12em;
+    text-shadow: 0.5px 0.5px 1px var(--ink);
+    line-height: 1.1;
+  }
+
+  .subtitle {
+    font-style: italic;
+    color: var(--ink-faded);
+    font-size: 16px;
+    margin-top: 8px;
+    letter-spacing: 0.06em;
+  }
+
+  .play-link {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 10px 28px;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-bright) 100%);
+    color: #1a1208;
+    font-family: 'IM Fell English SC', serif;
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+    border: 1px solid var(--gold);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition: opacity 0.2s;
+  }
+  .play-link:hover { opacity: 0.85; }
+
+  /* ── Sections ────────────────────────────────────────── */
+  .section {
+    margin-bottom: 36px;
+  }
+
+  h2 {
+    font-family: 'IM Fell English SC', serif;
+    font-size: 20px;
+    color: var(--crimson);
+    letter-spacing: 0.1em;
+    text-shadow: 0.4px 0.4px 0.8px var(--crimson);
+    border-bottom: 1px solid rgba(139,29,29,0.25);
+    padding-bottom: 6px;
+    margin-bottom: 14px;
+  }
+
+  h3 {
+    font-family: 'IM Fell English SC', serif;
+    font-size: 15px;
+    color: var(--ink);
+    margin: 18px 0 8px;
+    letter-spacing: 0.06em;
+  }
+
+  p {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--ink);
+    margin-bottom: 10px;
+  }
+
+  ul, ol {
+    padding-left: 22px;
+    margin-bottom: 10px;
+  }
+  li {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+
+  strong { color: var(--ink); font-weight: 600; }
+  em     { color: var(--ink-faded); }
+
+  /* ── Tables ──────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+    font-size: 14px;
+  }
+  th {
+    font-family: 'IM Fell English SC', serif;
+    background: rgba(42,31,21,0.07);
+    color: var(--ink);
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 2px solid var(--ink-faded);
+    letter-spacing: 0.05em;
+  }
+  td {
+    padding: 7px 12px;
+    border-bottom: 1px dotted rgba(42,31,21,0.2);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: rgba(42,31,21,0.03); }
+
+  /* ── Callout boxes ───────────────────────────────────── */
+  .callout {
+    background: rgba(184,144,46,0.12);
+    border-left: 3px solid var(--gold);
+    padding: 12px 18px;
+    margin: 16px 0;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--ink-faded);
+    font-style: italic;
+  }
+
+  .callout strong { color: var(--ink); font-style: normal; }
+
+  /* ── Color swatches for territory groups ────────────── */
+  .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid rgba(0,0,0,0.2);
+    vertical-align: middle;
+    margin-right: 5px;
+  }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  .footer {
+    text-align: center;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--ink-faded);
+    font-size: 13px;
+    color: var(--ink-faded);
+    font-style: italic;
+  }
+
+  @media (max-width: 600px) {
+    .page { padding: 32px 24px; }
+    table { font-size: 12px; }
+    td, th { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="masthead">
+    <div class="masthead-eagle">⚜</div>
+    <h1>Empire &amp; Coalition</h1>
+    <div class="subtitle">Rules of Engagement — A Campaign of Crowns and Coin</div>
+    <a class="play-link" href="index.html">▶ Play the Game</a>
+  </div>
+
+  <!-- ── Overview ──────────────────────────────────────── -->
+  <div class="section">
+    <h2>Overview</h2>
+    <p>
+      <strong>Empire &amp; Coalition</strong> is a Monopoly-inspired board game for
+      <strong>2–5 players</strong> set during the Napoleonic Wars. Each player commands
+      a historical figure racing around a 40-space map of Europe, buying territories,
+      building armies, and crushing rivals into bankruptcy.
+    </p>
+    <p>
+      The game ends either by <strong>Strategic Victory</strong> (seize Paris and two
+      Battle Territories) or at the end of <strong>Round 20</strong>, when the richest
+      Commander wins by net worth.
+    </p>
+    <div class="callout">
+      <strong>Starting treasury:</strong> every Commander begins with <strong>1,500₣</strong>
+      at Mobilization (space 0).
+    </div>
+  </div>
+
+  <!-- ── Turn Structure ────────────────────────────────── -->
+  <div class="section">
+    <h2>Turn Structure</h2>
+    <ol>
+      <li><strong>Roll the Dice</strong> — two six-sided dice. Doubles grant an extra roll; three consecutive doubles sends you straight to Exile.</li>
+      <li><strong>Move</strong> — advance that many spaces around the board.</li>
+      <li><strong>Resolve the space</strong> — buy, pay rent, draw a card, or follow the corner rule.</li>
+      <li><strong>Build</strong> — optionally spend money to place Regiments or upgrade to an Army Corps on territories you own outright.</li>
+      <li><strong>End Turn</strong> — pass to the next Commander.</li>
+    </ol>
+    <div class="callout">
+      Passing <strong>Mobilization</strong> (space 0) mid-move collects <strong>+200₣</strong>
+      from the bank at the correct step.
+    </div>
+  </div>
+
+  <!-- ── The Board ──────────────────────────────────────── -->
+  <div class="section">
+    <h2>The Board — 40 Spaces</h2>
+    <table>
+      <tr><th>Range</th><th>Contents</th></tr>
+      <tr><td>0</td><td><strong>Mobilization</strong> — start corner; collect 200₣ each pass</td></tr>
+      <tr><td>1–9</td><td>Bottom row: Brown &amp; LightBlue territories, Orders card, War Contributions tax (−200₣), North Supply Line</td></tr>
+      <tr><td>10</td><td><strong>Exile to Elba (Visiting)</strong> — just visiting, no penalty</td></tr>
+      <tr><td>11–19</td><td>Left column: Pink &amp; Orange territories, Continental System, Orders card, East Supply Line</td></tr>
+      <tr><td>20</td><td><strong>Congress of Vienna</strong> — free parking, no effect</td></tr>
+      <tr><td>21–29</td><td>Top row: Red Battle Territories × 3, Diplomacy card, Yellow territories, South Supply Line, Naval Blockade</td></tr>
+      <tr><td>30</td><td><strong>Exiled to Elba!</strong> — go directly to Exile</td></tr>
+      <tr><td>31–39</td><td>Right column: Green territories, Orders card, West Supply Line, Diplomacy card, Blue territories (London &amp; Paris), Imperial Tax (−100₣)</td></tr>
+    </table>
+
+    <h3>Territory Groups</h3>
+    <table>
+      <tr><th>Group</th><th>Territories</th><th>Price</th><th>Build Cost</th></tr>
+      <tr><td><span class="swatch" style="background:#8b6914"></span>Brown</td><td>2</td><td>60₣</td><td>50₣</td></tr>
+      <tr><td><span class="swatch" style="background:#87ceeb"></span>Light Blue</td><td>3</td><td>100–120₣</td><td>50₣</td></tr>
+      <tr><td><span class="swatch" style="background:#c06080"></span>Pink</td><td>3</td><td>140–160₣</td><td>100₣</td></tr>
+      <tr><td><span class="swatch" style="background:#d4882a"></span>Orange</td><td>3</td><td>180–200₣</td><td>100₣</td></tr>
+      <tr><td><span class="swatch" style="background:#cc2222"></span>Red ★</td><td>3 (Battle Territories)</td><td>220–240₣</td><td>150₣</td></tr>
+      <tr><td><span class="swatch" style="background:#c8a822"></span>Yellow</td><td>3</td><td>260–280₣</td><td>150₣</td></tr>
+      <tr><td><span class="swatch" style="background:#2d4a2b"></span>Green</td><td>3</td><td>300–320₣</td><td>200₣</td></tr>
+      <tr><td><span class="swatch" style="background:#1e3a5f"></span>Blue ♛</td><td>2 (London &amp; Paris)</td><td>350–400₣</td><td>200₣</td></tr>
+    </table>
+  </div>
+
+  <!-- ── Rent ───────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Rent</h2>
+    <h3>Territories</h3>
+    <p>Rent is read from the property's rent table based on number of buildings (0–5). When a player owns the <strong>full color group with zero buildings</strong>, rent is doubled.</p>
+    <p>Building levels: 1–4 = <strong>Regiments</strong>; 5 = <strong>Army Corps ★</strong> (maximum).</p>
+
+    <h3>Supply Lines</h3>
+    <table>
+      <tr><th>Lines Owned</th><th>Rent</th></tr>
+      <tr><td>1</td><td>25₣</td></tr>
+      <tr><td>2</td><td>50₣</td></tr>
+      <tr><td>3</td><td>100₣</td></tr>
+      <tr><td>4</td><td>200₣</td></tr>
+    </table>
+
+    <h3>Economic Spaces (Continental System &amp; Naval Blockade)</h3>
+    <table>
+      <tr><th>Owned</th><th>Rent</th></tr>
+      <tr><td>1</td><td>Dice total × 4₣</td></tr>
+      <tr><td>Both</td><td>Dice total × 10₣</td></tr>
+    </table>
+
+    <div class="callout">
+      <strong>Collapse State:</strong> players with ≤ 0₣ pay only 50% of rent owed and cannot purchase property.
+      Recovery is automatic when their treasury exceeds 200₣.
+    </div>
+  </div>
+
+  <!-- ── Building ───────────────────────────────────────── -->
+  <div class="section">
+    <h2>Building Regiments &amp; Army Corps</h2>
+    <ul>
+      <li>Requires owning the <strong>full color group</strong>.</li>
+      <li>Costs the group's <strong>build cost</strong> per level.</li>
+      <li><strong>Even-build rule:</strong> no territory in a group may have more buildings than any other in the same group — you must build evenly across the group.</li>
+      <li>Maximum 5 levels: levels 1–4 are Regiments, level 5 is an Army Corps.</li>
+    </ul>
+  </div>
+
+  <!-- ── Purchasing & Auction ───────────────────────────── -->
+  <div class="section">
+    <h2>Purchasing &amp; Auction</h2>
+    <p>Landing on an unowned property offers it to you at the listed price. If you <strong>decline</strong>, an open auction is held immediately for all other active players:</p>
+    <ul>
+      <li>Minimum bid is <strong>½ the listed price</strong>.</li>
+      <li>Each bidder may bid at preset amounts (½, ¾, full price, or current high +10₣) or pass.</li>
+      <li>The highest bidder acquires the property at their bid price.</li>
+      <li>If all players pass, the property remains unowned.</li>
+    </ul>
+    <p>Players in Collapse State (<strong>≤ 0₣</strong>) cannot purchase.</p>
+  </div>
+
+  <!-- ── Exile ──────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Exile on Elba</h2>
+    <p>A player is exiled by landing on <em>Exiled to Elba!</em> (space 30), drawing the Exile Diplomacy card, or rolling three consecutive doubles.</p>
+    <p>Each exile turn, choose one of:</p>
+    <ol>
+      <li><strong>Roll for Doubles</strong> — escape and move that many spaces. After 3 failed attempts the player pays 50₣ and is released automatically.</li>
+      <li><strong>Pay 50₣</strong> — immediate release; then roll and move normally.</li>
+      <li><strong>Use a "Get Out of Exile" card</strong> — free escape; then roll and move normally.</li>
+    </ol>
+  </div>
+
+  <!-- ── Elimination ────────────────────────────────────── -->
+  <div class="section">
+    <h2>Elimination</h2>
+    <p>When a player cannot cover a debt, their assets are <strong>force-liquidated</strong>: buildings sell first, then cheapest properties, to raise funds. If their treasury reaches zero with no assets remaining, they are <strong>eliminated</strong> — properties return to the bank and their turns are skipped.</p>
+    <p>If only one Commander remains after eliminations, they win immediately.</p>
+  </div>
+
+  <!-- ── Cards ─────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Cards</h2>
+    <h3>Orders Deck (12 cards)</h3>
+    <table>
+      <tr><th>Card</th><th>Effect</th></tr>
+      <tr><td>Advance to Paris</td><td>Move to space 39; collect 200₣ if passing Mobilization</td></tr>
+      <tr><td>Advance to Austerlitz</td><td>Move to space 21; collect 200₣ if passing Mobilization</td></tr>
+      <tr><td>Forced March</td><td>Advance 3 spaces</td></tr>
+      <tr><td>Plunder Stores</td><td>Gain 150₣</td></tr>
+      <tr><td>Pay Marshals</td><td>Pay 100₣</td></tr>
+      <tr><td>Winter Quarters</td><td>Skip next turn</td></tr>
+      <tr><td>Brilliant Maneuver</td><td>Gain 200₣</td></tr>
+      <tr><td>Retreat</td><td>Move back 3 spaces</td></tr>
+      <tr><td>Promoted to Marshal</td><td>Gain 100₣</td></tr>
+      <tr><td>Logistics Failure</td><td>Pay 50₣ per Regiment / Army Corps owned</td></tr>
+      <tr><td>Field Hospital</td><td>Pay 75₣</td></tr>
+      <tr><td>Captured Artillery</td><td>Gain 120₣</td></tr>
+    </table>
+
+    <h3>Diplomacy Deck (12 cards)</h3>
+    <table>
+      <tr><th>Card</th><th>Effect</th></tr>
+      <tr><td>Treaty of Tilsit</td><td>Gain 200₣</td></tr>
+      <tr><td>War Reparations</td><td>Pay 100₣</td></tr>
+      <tr><td>Get Out of Exile Free</td><td>Keep; use to escape Exile at no cost</td></tr>
+      <tr><td>Collect Tribute</td><td>Each rival pays you 50₣</td></tr>
+      <tr><td>Diplomatic Gala</td><td>Pay each rival 50₣</td></tr>
+      <tr><td>Bank Dividend</td><td>Gain 150₣</td></tr>
+      <tr><td>Inheritance</td><td>Gain 100₣</td></tr>
+      <tr><td>Supply Insurance</td><td>Gain 50₣ per supply line owned</td></tr>
+      <tr><td>Coronation Expenses</td><td>Pay 150₣</td></tr>
+      <tr><td>Exile</td><td>Go directly to Exile</td></tr>
+      <tr><td>Council Seat</td><td>Gain 100₣</td></tr>
+      <tr><td>Espionage</td><td>Pay 75₣</td></tr>
+    </table>
+  </div>
+
+  <!-- ── Victory ────────────────────────────────────────── -->
+  <div class="section">
+    <h2>Victory Conditions</h2>
+    <h3>Strategic Victory (immediate)</h3>
+    <p>Own <strong>Paris</strong> (space 39) <em>and</em> at least <strong>2 of the 3 Battle Territories</strong> (Austerlitz, Jena-Auerstedt, Wagram).</p>
+
+    <h3>Net-Worth Victory (Round 20)</h3>
+    <p>If no Strategic Victory occurs by the end of Round 20, the player with the highest <strong>net worth</strong> (cash + property prices + building costs) wins.</p>
+
+    <h3>Last Commander Standing</h3>
+    <p>If all rivals are eliminated, the surviving Commander wins immediately.</p>
+  </div>
+
+  <!-- ── Commanders ─────────────────────────────────────── -->
+  <div class="section">
+    <h2>Commanders &amp; Abilities</h2>
+    <p>Each player selects a unique historical Commander during setup. Abilities fire automatically — no player action required.</p>
+    <table>
+      <tr><th>Commander</th><th>Faction</th><th>Ability</th><th>Effect</th></tr>
+      <tr>
+        <td><strong>Napoleon Bonaparte</strong></td>
+        <td>French</td>
+        <td>Eagle of Victory</td>
+        <td>+50₣ whenever you acquire Austerlitz, Jena-Auerstedt, or Wagram</td>
+      </tr>
+      <tr>
+        <td><strong>Marshal Davout</strong></td>
+        <td>French</td>
+        <td>Iron Discipline</td>
+        <td>Rivals pay +25% rent on all territories you own</td>
+      </tr>
+      <tr>
+        <td><strong>Marshal Murat</strong></td>
+        <td>French</td>
+        <td>Cavalry Charge</td>
+        <td>+75₣ each time you roll doubles (1st and 2nd only — not the exile-triggering 3rd)</td>
+      </tr>
+      <tr>
+        <td><strong>Marshal Ney</strong></td>
+        <td>French</td>
+        <td>Rearguard Action</td>
+        <td>When sent to Exile, roll 1d6 first; on 5–6 hold the line and stay</td>
+      </tr>
+      <tr>
+        <td><strong>Duke of Wellington</strong></td>
+        <td>Coalition</td>
+        <td>Defensive Genius</td>
+        <td>You pay −25% rent on all territories you do not own</td>
+      </tr>
+      <tr>
+        <td><strong>Tsar Alexander I</strong></td>
+        <td>Coalition</td>
+        <td>Scorched Earth</td>
+        <td>When any rival lands on a Green territory you own, collect +100₣ from the bank</td>
+      </tr>
+      <tr>
+        <td><strong>Marshal Blücher</strong></td>
+        <td>Coalition</td>
+        <td>Vorwärts!</td>
+        <td>When leaving Exile by any means, immediately roll and move on the same turn</td>
+      </tr>
+    </table>
+    <div class="callout">
+      <strong>Ability stacking:</strong> Davout (+25%) and Wellington (−25%) both apply when
+      Wellington lands on a Davout-owned territory: base × 1.25 × 0.75.
+    </div>
+  </div>
+
+  <div class="footer">
+    Empire &amp; Coalition — a Napoleonic campaign in the grand tradition.<br>
+    <a href="index.html" style="color:var(--gold);text-decoration:none">▶ Return to the Campaign</a>
+  </div>
+
+</div>
+
+<!-- Paper grain texture (same filter as the main board) -->
+<svg style="display:none;position:absolute;width:0;height:0" aria-hidden="true">
+  <defs>
+    <filter id="paper-texture" x="0%" y="0%" width="100%" height="100%"
+            color-interpolation-filters="linearRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="4"
+                    stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="matrix"
+        values="0 0 0 0 0.42  0 0 0 0 0.30  0 0 0 0 0.18  0 0 0 0.07 0"
+        in="noise" result="coloredNoise"/>
+      <feBlend in="SourceGraphic" in2="coloredNoise" mode="multiply" result="blended"/>
+      <feComposite in="blended" in2="SourceGraphic" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+</body>
+</html>
