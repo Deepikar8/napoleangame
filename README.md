@@ -2,15 +2,18 @@
 
 A Napoleonic Monopoly-style browser board game for 2–5 players.
 
-[![Deploy to GitHub Pages](https://github.com/YOUR_USER/napoleangame/actions/workflows/deploy.yml/badge.svg)](https://github.com/YOUR_USER/napoleangame/actions/workflows/deploy.yml)
+[![Deploy to GitHub Pages](https://github.com/Deepikar8/napoleangame/actions/workflows/deploy.yml/badge.svg)](https://github.com/Deepikar8/napoleangame/actions/workflows/deploy.yml)
 
-> Replace `YOUR_USER` with your GitHub username after pushing.
+## 🎮 Play Now
+
+| | |
+|---|---|
+| **Game** | https://deepikar8.github.io/napoleangame/ |
+| **Rules** | https://deepikar8.github.io/napoleangame/rules.html |
 
 ---
 
-## Play
-
-Serve locally (required for ES modules):
+## Local Development
 
 ```bash
 python3 -m http.server 8080
